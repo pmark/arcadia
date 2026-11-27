@@ -29,7 +29,14 @@ const fail = (code, message, sequenceClaimed) => {
 // finds the last beat 40 s old; only a wait (the fake `sleep`, fake-sleep.mjs) lets the next beat land, and only if it `recovers`.
 const heartbeatFile = path.join(state.workspace, ".arcadia", "worker-claude-usage-heartbeat.json");
 const slow = state.worker.slowTick;
-const slowNow = Boolean(slow) && (slow.from === "start" || (slow.from === "restart" && state.worker.pid === state.worker.newPid) || (slow.from === "sign-in" && state.worker.signedIn === true));
+// Issue #3122, `from: "lead"`: one long beat gap that opens at P4's capacity guard (after the restart, before the sign-in) and
+// closes when fake-sleep lands the late beat; with `relapses` the gap opens again at the next call and never closes.
+if (slow?.from === "lead" && state.worker.pid === state.worker.newPid && state.worker.signedIn !== true && !slow.started && key2 === "production capacity") {
+  slow.started = true;
+  save();
+}
+const leadSlow = slow?.from === "lead" && slow.started === true && state.worker.signedIn !== true && (!slow.landed || slow.relapses === true);
+const slowNow = Boolean(slow) && (slow.from === "start" || (slow.from === "restart" && state.worker.pid === state.worker.newPid) || (slow.from === "sign-in" && state.worker.signedIn === true) || leadSlow);
 if (state.worker.alive && state.worker.heartbeat === "fresh" && existsSync(heartbeatFile)) {
   const beat = JSON.parse(readFileSync(heartbeatFile, "utf8"));
   beat.at = slowNow ? Date.now() - 40_000 : Date.now();

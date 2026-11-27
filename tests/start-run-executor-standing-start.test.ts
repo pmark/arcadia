@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { startRunLauncher, validateOperatorScriptContract, type OperatorScriptDescriptor } from "../src/operatorActions/libraryContract.js";
 import type { StartRunPins } from "../src/operatorActions/startRunPins.js";
 import { CONTINUE_ANSWER, CONTINUE_SLUG } from "../src/operatorActions/startRunDayGrant.js";
+import { WORKER_RECEIPT_WAIT_MS } from "../src/production/startRunSignIn.js";
 import { DAY_CARD, DAY_RUN, dayScenarios, named, OLD_FIX_COMMIT, pressKey, STOP_ID, writeDayApproval, writeDayScenario, writeStopPress, type DayScenario } from "./helpers/dayGrantFixture.js";
 
 /**
@@ -141,7 +142,11 @@ interface BoxOptions {
   preWorker?: "stale" | "pid-mismatch" | "source-child";
   /** Issue #3030: a worker that beats once per slow tick. From `from` on, each executor step finds its last beat 40 s old;
    * a wait (the fake `sleep`) lets the next beat land only if it `recovers`. */
-  slowTick?: { from: "start" | "restart" | "sign-in"; recovers: boolean; during?: SlowTickDuring };
+  slowTick?: { from: "start" | "restart" | "sign-in"; recovers: boolean; during?: SlowTickDuring }
+    /** Issue #3122: one long gap from P4's capacity guard until `arrivesAfterSeconds` of waiting; `relapses` reopens it once closed. */
+    | { from: "lead"; recovers: boolean; arrivesAfterSeconds?: number; relapses?: boolean; during?: SlowTickDuring };
+  /** The fixture-only wait bound in seconds (.start-run-test-fixture, default 4); 40 keeps the real 36 s lead wait and 16 s tick. */
+  fixtureWait?: number;
   /** Earlier finished sequences of other cards recorded today in the ledger (Decision 0162: never a reason to refuse). */
   dayUsed?: boolean;
   plist?: boolean;
@@ -327,7 +332,7 @@ function box(options: BoxOptions = {}) {
   writeFileSync(scriptPath, script, { mode: 0o755 });
   writeFileSync(descriptorPath, JSON.stringify(descriptor, null, 2) + "\n");
   // Fixture-only wait shortening, honoured by the executor only because this marker sits in the fake library.
-  writeFileSync(path.join(library, ".start-run-test-fixture"), "4");
+  writeFileSync(path.join(library, ".start-run-test-fixture"), String(options.fixtureWait ?? 4));
   mkdirSync(path.join(library, "reviewed"));
   writeFileSync(path.join(library, "reviewed", `${ID}.json`), JSON.stringify({ sh: sha(readFileSync(scriptPath)), json: sha(readFileSync(descriptorPath)), executor: sha(EXECUTOR_SOURCE), ...(options.dayGrant && !options.noPremortem ? { premortem: "https://github.com/pmark/arcadia/issues/1#issuecomment-1" } : {}) }));
   if (options.tamper === "descriptor") writeFileSync(descriptorPath, readFileSync(descriptorPath, "utf8") + "\n");
@@ -886,6 +891,71 @@ describe("start-run executor: a slow-tick worker heartbeat (#3030)", () => {
     expect(b.sequence()).toEqual(["go-broker ensure", "worker-install"]);
     expect(existsSync(path.join(b.workspace, ".arcadia", "claude-renewal-days"))).toBe(false);
   }, 120_000);
+
+  // Issue #3122: the worker's beat gaps reach 21-30 s at low load, so the lead wait after the P4 guards is 36 s, not 16 s; a wait
+  // longer than one 16 s tick re-runs the guards and re-requires the 8 s lead once, within 16 s. The fixture bound is 40 s here,
+  // so the real 36 s and 16 s bounds apply (a fake sleep takes no time: polls stand for seconds, 2 s each).
+  const signInCalls = (b: Box) => {
+    const calls = b.calls();
+    const end = calls.findIndex((call) => call.args.slice(0, 2).join(" ") === "start-run sign-in" && !call.args.includes("--check-only"));
+    return calls.slice(calls.findIndex((call) => call.tool === "worker-install") + 1, end < 0 ? undefined : end);
+  };
+  const p4Count = (b: Box, key: string) => signInCalls(b).filter((call) => call.tool === "arcadia" && call.args.slice(0, 2).join(" ") === key).length;
+
+  it("a beat that first arrives 26 s into the P4 lead wait passes, after the guards run again and the lead is re-required", () => {
+    const b = box({ fixtureWait: 40, slowTick: { from: "lead", recovers: true, arrivesAfterSeconds: 25 } });
+    const result = b.run();
+    expect(result.status, result.stderr + result.stdout).toBe(0);
+    expect(result.receipt).toMatchObject({ outcome: "succeeded", phase: "P6", allowanceConsumed: true, productionActivated: true });
+    expect(result.receipt!.record).toMatchObject({
+      signInHeartbeatWait: { outcome: "fresh", polls: 1 }, signInLeadHeartbeatWait: { outcome: "fresh", polls: 14 },
+      signInLeadGuardRecheck: { polls: 14, budgetSeconds: 36, boundSeconds: 16 },
+      signInLeadRecheckHeartbeatWait: { outcome: "fresh", polls: 1 }
+    });
+    // The Off and capacity guards ran twice in P4, before the lead wait and after it (P3's last check reads the status once more).
+    expect([p4Count(b, "production status"), p4Count(b, "production capacity")]).toEqual([3, 2]);
+    expect(b.sequence()).toEqual(["go-broker ensure", "worker-install", "start-run sign-in", "production activate"]);
+  }, 120_000);
+
+  it("a beat that never arrives within the 36 s lead wait refuses before the sign-in is invoked", () => {
+    const b = box({ fixtureWait: 40, slowTick: { from: "lead", recovers: false } });
+    const result = b.run();
+    expect(result.status).not.toBe(0);
+    expect(result.receipt).toMatchObject({ outcome: "refused", phase: "P4", allowanceConsumed: true, productionActivated: false });
+    expect(result.receipt!.reason).toMatch(/the bound worker.s heartbeat after the sign-in guards: no beat younger than 8000 ms within 36 s; the sign-in sequence was not invoked/);
+    expect(result.receipt!.record.signInLeadHeartbeatWait).toEqual({ outcome: "stale", polls: 19 });
+    expect(result.receipt!.record.signInLeadGuardRecheck).toBeUndefined();
+    expect(b.sequence()).toEqual(["go-broker ensure", "worker-install"]);
+  }, 120_000);
+
+  it("a second long wait after the rechecked guards refuses rather than waiting again", () => {
+    const b = box({ fixtureWait: 40, slowTick: { from: "lead", recovers: true, arrivesAfterSeconds: 25, relapses: true } });
+    const result = b.run();
+    expect(result.status).not.toBe(0);
+    expect(result.receipt).toMatchObject({ outcome: "refused", phase: "P4", allowanceConsumed: true, productionActivated: false });
+    expect(result.receipt!.reason).toMatch(/after the rechecked sign-in guards: no beat younger than 8000 ms within 16 s; the sign-in sequence was not invoked/);
+    expect(result.receipt!.record.signInLeadRecheckHeartbeatWait).toEqual({ outcome: "stale", polls: 9 });
+    expect(b.sequence()).toEqual(["go-broker ensure", "worker-install"]);
+  }, 120_000);
+
+  it("a tmux Session appearing during a long lead wait refuses at the rechecked guards, before the sign-in claims the day", () => {
+    const b = box({ fixtureWait: 40, slowTick: { from: "lead", recovers: true, arrivesAfterSeconds: 25, during: { stage: "sign-in", tmuxSession: "stray-builder" } } });
+    const result = b.run();
+    expect(result.status).not.toBe(0);
+    expect(result.receipt).toMatchObject({ outcome: "refused", phase: "P4", allowanceConsumed: true, productionActivated: false });
+    expect(result.receipt!.reason).toMatch(/no competing Session may run before the sign-in sequence, after the long lead wait .*stray-builder/);
+    expect(result.receipt!.record.signInLeadHeartbeatWait).toEqual({ outcome: "fresh", polls: 14 });
+    expect(b.sequence()).toEqual(["go-broker ensure", "worker-install"]);
+    expect(existsSync(path.join(b.workspace, ".arcadia", "claude-renewal-days"))).toBe(false);
+  }, 120_000);
+
+  it("the lead wait plus the lead stays at most 50 s and below the sign-in's wait for the worker's receipt", () => {
+    const constant = (name: string) => Number(new RegExp(`^${name}=(\\d+)$`, "m").exec(EXECUTOR_SOURCE)?.[1]);
+    const tolerated = constant("HEARTBEAT_SIGN_IN_LEAD_WAIT_SECONDS") + constant("HEARTBEAT_SIGN_IN_LEAD_MS") / 1000;
+    expect([constant("HEARTBEAT_SIGN_IN_LEAD_WAIT_SECONDS"), constant("HEARTBEAT_SIGN_IN_GUARD_SECONDS"), constant("HEARTBEAT_SIGN_IN_LEAD_MS")]).toEqual([36, 16, 8000]);
+    expect(tolerated).toBeLessThanOrEqual(50);
+    expect(tolerated).toBeLessThan(WORKER_RECEIPT_WAIT_MS / 1000);
+  });
 
   // Review B1 of PR #3036: after an activation wait that polled more than once, nothing checked before it is that old at the activation.
   it.each<[string, SlowTickDuring, Record<string, unknown> | undefined, RegExp]>([
