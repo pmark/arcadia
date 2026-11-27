@@ -6,6 +6,7 @@ import type { Project } from "../domain/types.js";
 import { getRepositoryLease } from "../sessions/index.js";
 import { activeActionScopeGate } from "../production/policy.js";
 import { operatorHeldEscalation, pendingTerminalCandidateFor, reviewRepairEscalationState } from "../production/terminalCandidates.js";
+import { releaseActionPark } from "../production/nightBreaker.js";
 import { findOutstandingCandidate } from "../sessions/candidatePreservation.js";
 import { resolveBatch, type BatchResolution } from "../docs/batch.js";
 import { loadActionOrder } from "../dispatch/order.js";
@@ -296,11 +297,13 @@ function alignPointer(db: Database.Database, schedule: ProjectSchedule, now: Dat
   const actionKey = schedule.next;
   const actionId = actionKey ? actionKey.slice(schedule.projectSlug.length + 1) : null;
   const unchanged = (reason: string) => ({ moved: false, from, to: from, reason });
-  // A held row for an Action that is now done is stale: drop it.
+  // A held row for an Action that is now done is stale: drop it, and end its park (the park's receipts stay).
   for (const action of schedule.actions) {
-    if (action.status === "done" && (reviewRepairEscalationState(db, action.key) || operatorHeldEscalation(db, action.key))) {
+    if (action.status !== "done") continue;
+    if (reviewRepairEscalationState(db, action.key) || operatorHeldEscalation(db, action.key)) {
       db.prepare("DELETE FROM production_operator_escalations WHERE action_key = ?").run(action.key);
     }
+    releaseActionPark(db, action.key);
   }
   if (schedule.pausedReason) return unchanged(`Project is paused: ${schedule.pausedReason}`);
   if (!actionKey || !actionId) {
