@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: track-5-standby-test-pins-20261126
 project: arcadia
-status: active
+status: complete
 milestone: Track 5 standby test pins 20261126
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
@@ -151,11 +151,11 @@ actions:
     references: ["src/timeline/classify.ts", "tests/pin-review-item-work-kind.test.ts"]
   - id: pin-execution-tier-stronger-of
     title: Pin that the execution tier floor helpers return the stronger of two capability tiers or reasoning efforts, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that the execution tier floor helpers return the stronger of two capability tiers or reasoning efforts, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-execution-tier-stronger-of-76c7f1194dc1; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-execution-tier-stronger-of
     clarification: clarified
     confidence: high
@@ -171,7 +171,6 @@ actions:
     references: ["src/execution/profiles.ts", "tests/pin-execution-tier-stronger-of.test.ts"]
 questions: []
 decisions: []
-current_action: pin-execution-tier-stronger-of
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
