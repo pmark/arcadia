@@ -11,11 +11,11 @@ updated: 2026-11-27
 actions:
   - id: pin-orientation-urgency-score
     title: Pin how a Life-ledger entry's continuous urgency score is computed from its priority and due date, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin how a Life-ledger entry's continuous urgency score is computed from its priority and due date, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-orientation-urgency-score-5a376a615cc2; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-orientation-urgency-score
     clarification: clarified
     confidence: high
@@ -171,7 +171,7 @@ actions:
     references: ["src/intelligence/validation/validateRequirements.ts", "tests/pin-intelligence-requirement-checks.test.ts"]
 questions: []
 decisions: []
-current_action: pin-orientation-urgency-score
+current_action: pin-scout-clock-validity
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
