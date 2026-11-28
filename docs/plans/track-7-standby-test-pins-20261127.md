@@ -19,11 +19,11 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask pin-local-date-parts
     clarification: clarified
     confidence: high
-    source: Agent Ask rowan-g12-plan-track-7-standby-test-pins-20261127
+    source: Agent Ask rowan-g12-amend-track-7-review-r1b-20261127
     why: "localDateParts (src/utils/time.ts:5-11) supplies the local date that localDateStamp (time.ts:13-16), the Mission Log path (markdown/missionLog.ts:16) and experiment brief dates use, and no test file names it, so its padding and local-calendar rule are pinned only indirectly."
     acceptance_criteria:
-      - "tests/pin-local-date-parts.test.ts is a new test file that imports localDateParts from ../src/utils/time.js (lines 5-11) and asserts it returns { year: \"2026\", month: \"11\", day: \"07\" } for a local Date built as 2026-11-07 09:05 and { year: \"2026\", month: \"01\", day: \"31\" } for 2026-01-31 23:59."
-      - "The same test file asserts it returns { year: \"2026\", month: \"12\", day: \"31\" } for a local Date built as 2026-12-31 12:00."
+      - "tests/pin-local-date-parts.test.ts is a new test file that imports localDateParts from ../src/utils/time.js (lines 5-11) and asserts it returns { year: \"2026\", month: \"11\", day: \"07\" } for the local Date new Date(2026, 10, 7, 9, 5) and { year: \"2026\", month: \"01\", day: \"31\" } for new Date(2026, 0, 31, 23, 59), each built with the local-time Date constructor, never an ISO string."
+      - "The same test file asserts it returns { year: \"2026\", month: \"12\", day: \"31\" } for the local Date new Date(2026, 11, 31, 12)."
       - No src/ change is made to make the test pass; if current behaviour differs from these assertions, the Session reports the mismatch instead of changing src/.
       - Apart from the settlement records Arcadia writes, the change touches only tests/pin-local-date-parts.test.ts, a new test file of at most 50 lines that imports only vitest and src/utils/time.ts; no src/, tests/helpers/, tests/fixtures/ or other test file changes, and the test needs no network, timer, child process, database or live service. Proof that this file passes and lints cleanly comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.
     depends_on: []
@@ -99,11 +99,11 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask pin-mission-log-markdown
     clarification: clarified
     confidence: high
-    source: Agent Ask rowan-g12-plan-track-7-standby-test-pins-20261127
+    source: Agent Ask rowan-g12-amend-track-7-review-r1b-20261127
     why: "renderMissionLogMarkdown (src/markdown/missionLog.ts:30-62) is the text that writeMissionLogMarkdown (missionLog.ts:68) writes for each Mission Log, and no test file names it, so its section order and fallbacks are pinned only indirectly."
     acceptance_criteria:
-      - "tests/pin-mission-log-markdown.test.ts is a new test file that imports renderMissionLogMarkdown from ../src/markdown/missionLog.js (lines 30-62) and, for a log created at 2026-11-27T10:00:00.000Z with null blockers and artifact impact and project Arcadia with no milestone, asserts the output starts with the heading \"# Mission Log: Arcadia\" followed by the Date, Project and \"Milestone: None\" lines, includes the Blockers section reading None, ends with the Artifact Impact section reading None followed by a blank line, and has length 201."
-      - "The same test file asserts that with no project the heading reads \"Unassigned\", and that with milestone title M1 and verbatim text its first five lines are \"# Mission Log: Unassigned\", \"\", \"Date: c\", \"Project: Unassigned\" and \"Milestone: M1\", and its last five lines are \"## Artifact Impact\", \"\", \"ai\", \"\" and \"\"."
+      - "tests/pin-mission-log-markdown.test.ts is a new test file that imports renderMissionLogMarkdown from ../src/markdown/missionLog.js (lines 30-62) and, for a log with created_at \"2026-11-27T10:00:00.000Z\", work_performed \"Did A\", result \"Done\", next_action \"Next B\", blockers null and artifact_impact null, project { name: \"Arcadia\" } and milestone null, asserts the output starts with the heading \"# Mission Log: Arcadia\" followed by the Date, Project and \"Milestone: None\" lines, includes the Blockers section reading None, ends with the Artifact Impact section reading None followed by a blank line, and has length 201."
+      - "The same test file asserts that with no project the heading reads \"Unassigned\", and that with project null, milestone { title: \"M1\" } and the log fields created_at \"c\", work_performed \"w\", result \"r\", blockers \"bl\", next_action \"n\" and artifact_impact \"ai\", its first five lines are \"# Mission Log: Unassigned\", \"\", \"Date: c\", \"Project: Unassigned\" and \"Milestone: M1\", and its last five lines are \"## Artifact Impact\", \"\", \"ai\", \"\" and \"\"."
       - No src/ change is made to make the test pass; if current behaviour differs from these assertions, the Session reports the mismatch instead of changing src/.
       - Apart from the settlement records Arcadia writes, the change touches only tests/pin-mission-log-markdown.test.ts, a new test file of at most 50 lines that imports only vitest and src/markdown/missionLog.ts; no src/, tests/helpers/, tests/fixtures/ or other test file changes, and the test needs no network, timer, child process, database or live service. Proof that this file passes and lints cleanly comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.
     depends_on: []
@@ -119,11 +119,11 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask pin-cli-failure-envelope
     clarification: clarified
     confidence: high
-    source: Agent Ask rowan-g12-plan-track-7-standby-test-pins-20261127
+    source: Agent Ask rowan-g12-amend-track-7-review-r1b-20261127
     why: "createFailure (src/cli/response.ts:46-57) builds the --json failure envelope that cli.ts:6054 and 6438 write and the brief broker returns at briefSupervisor.ts:117, and no test file names it, so its field copy and optional workspace are pinned only indirectly."
     acceptance_criteria:
-      - "tests/pin-cli-failure-envelope.test.ts is a new test file that imports createFailure from ../src/cli/response.js (lines 46-57) and, with a code VALIDATION_ERROR, message bad input and details { field: \"x\" } given with workspace /ws, asserts it equals { ok: false, command: \"arcadia status\", workspace: \"/ws\", error: { code: \"VALIDATION_ERROR\", message: \"bad input\", details: { field: \"x\" } } }."
-      - "The same test file asserts that with no workspace argument the workspace property is undefined and the result equals { ok: false, command: \"arcadia status\", error: { code: \"VALIDATION_ERROR\", message: \"bad input\", details: {} } }."
+      - "tests/pin-cli-failure-envelope.test.ts is a new test file that imports createFailure from ../src/cli/response.js (lines 46-57) and, with the error given as the plain object { code: \"VALIDATION_ERROR\", message: \"bad input\", exitCode: 2, details: { field: \"x\" } } cast to createFailure's error parameter type (so no other src module is imported) and workspace \"/ws\", asserts it equals { ok: false, command: \"arcadia status\", workspace: \"/ws\", error: { code: \"VALIDATION_ERROR\", message: \"bad input\", details: { field: \"x\" } } }."
+      - "The same test file asserts that for the same plain-object error with details {} and no workspace argument the workspace property is undefined and the result equals { ok: false, command: \"arcadia status\", error: { code: \"VALIDATION_ERROR\", message: \"bad input\", details: {} } }."
       - No src/ change is made to make the test pass; if current behaviour differs from these assertions, the Session reports the mismatch instead of changing src/.
       - Apart from the settlement records Arcadia writes, the change touches only tests/pin-cli-failure-envelope.test.ts, a new test file of at most 50 lines that imports only vitest and src/cli/response.ts; no src/, tests/helpers/, tests/fixtures/ or other test file changes, and the test needs no network, timer, child process, database or live service. Proof that this file passes and lints cleanly comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.
     depends_on: []
@@ -159,11 +159,11 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask pin-experiment-brief-path
     clarification: clarified
     confidence: high
-    source: Agent Ask rowan-g12-plan-track-7-standby-test-pins-20261127
-    why: "buildExperimentBriefRelativePath (src/markdown/experimentBrief.ts:19-23) names every experiment brief that commands/experiment.ts:79 writes, and no test file names it, so its slug and local date stamp are pinned only indirectly."
+    source: Agent Ask rowan-g12-amend-track-7-review-r1b-20261127
+    why: "buildExperimentBriefRelativePath (src/markdown/experimentBrief.ts:19-31) names every experiment brief that commands/experiment.ts:79 writes, and no test file names it, so its slug and local date stamp are pinned only indirectly."
     acceptance_criteria:
-      - "tests/pin-experiment-brief-path.test.ts is a new test file that imports buildExperimentBriefRelativePath from ../src/markdown/experimentBrief.js (lines 19-23) and asserts it returns \"artifacts/experiments/2026-11-27-arcadia-pinned-tests-go-experiment-brief.md\" for project slug arcadia, opportunity \"Pinned Tests: Go!\" and the local date 2026-11-27 12:00."
-      - "The same test file asserts it returns \"artifacts/experiments/2026-01-02-arcadia-x-experiment-brief.md\" for opportunity x and the local date 2026-01-02 00:30, zero-padding the month and day."
+      - "tests/pin-experiment-brief-path.test.ts is a new test file that imports buildExperimentBriefRelativePath from ../src/markdown/experimentBrief.js (lines 19-31) and asserts it returns \"artifacts/experiments/2026-11-27-arcadia-pinned-tests-go-experiment-brief.md\" for project slug arcadia, opportunity \"Pinned Tests: Go!\" and the local Date new Date(2026, 10, 27, 12)."
+      - The same test file asserts it returns "artifacts/experiments/2026-01-02-arcadia-x-experiment-brief.md" for opportunity x and the local Date new Date(2026, 0, 2, 0, 30) (local-time constructor, never an ISO string), zero-padding the month and day.
       - No src/ change is made to make the test pass; if current behaviour differs from these assertions, the Session reports the mismatch instead of changing src/.
       - Apart from the settlement records Arcadia writes, the change touches only tests/pin-experiment-brief-path.test.ts, a new test file of at most 50 lines that imports only vitest and src/markdown/experimentBrief.ts; no src/, tests/helpers/, tests/fixtures/ or other test file changes, and the test needs no network, timer, child process, database or live service. Proof that this file passes and lints cleanly comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.
     depends_on: []
