@@ -4,7 +4,7 @@ type: decision
 id: "0307"
 slug: clarify-decision-0297-s-an-agent-re-running-a-check-where-every-test-passed-at
 project: arcadia
-status: open
+status: approved
 question: "Clarify Decision 0297's \"an agent re-running a check where every test passed (at most once per version)\": record the operator's answer \"A (recommended): yes\", under which a re-run where setup failed before any test ran still counts as clean, from now on, once per version and logged."
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -21,7 +21,9 @@ options:
     recommended: false
 confidence: high
 plan: track-6-standby-test-pins-20261127
-updated: 2026-11-28
+updated: 2026-11-27
+answer: A. yes, from now on, once per version and logged
+decided: 2026-11-27
 ---
 
 # Decision 0307: Clarify Decision 0297's "an agent re-running a check where every test passed (at most once per version)": record the operator's answer "A (recommended): yes", under which a re-run where setup failed before any test ran still counts as clean, from now on, once per version and logged.
