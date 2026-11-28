@@ -71,11 +71,11 @@ actions:
     references: ["src/workspace/paths.ts", "tests/pin-workspace-relative-path.test.ts"]
   - id: pin-sqlite-error-guards
     title: Pin which SQLite errors are recognised as a native addon ABI mismatch or a workspace write denial, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin which SQLite errors are recognised as a native addon ABI mismatch or a workspace write denial, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-sqlite-error-guards-d718712cbb0a; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-sqlite-error-guards
     clarification: clarified
     confidence: high
@@ -171,7 +171,7 @@ actions:
     references: ["src/markdown/experimentBrief.ts", "tests/pin-experiment-brief-path.test.ts"]
 questions: []
 decisions: []
-current_action: pin-sqlite-error-guards
+current_action: pin-mission-log-markdown
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
