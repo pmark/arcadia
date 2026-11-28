@@ -11,11 +11,11 @@ updated: 2026-11-28
 actions:
   - id: pin-local-date-parts
     title: Pin how a Date is split into zero-padded local year, month and day strings, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin how a Date is split into zero-padded local year, month and day strings, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-local-date-parts-2c2f38ef9aa0; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-local-date-parts
     clarification: clarified
     confidence: high
@@ -171,7 +171,7 @@ actions:
     references: ["src/markdown/experimentBrief.ts", "tests/pin-experiment-brief-path.test.ts"]
 questions: []
 decisions: []
-current_action: pin-local-date-parts
+current_action: pin-timeline-actor-label
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
