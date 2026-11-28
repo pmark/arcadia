@@ -33,7 +33,12 @@ operator after the press (C5). A cause recurring twice must get a real fix. If
 it happens a third time without one, it no longer counts as clean. Decision
 0298 (the "2A" of the operator's "1A 2A", 2026-11-26T04:28:43Z) adds that a
 touch means acting on that run itself (its jobs, its PRs, or switching
-production), so his answers about other work while it runs don't count. Any wider term needs a separate
+production), so his answers about other work while it runs don't count.
+Decision 0307 (his "A (recommended): yes" at 2026-11-28T05:15:53Z, 9:15 PM PST
+11-27, to "should a re-run still count as clean when setup failed before any
+test ran?") adds that such a re-run counts as clean, from now on, once per
+version and logged; repeated causes still need a real fix. It recounts no
+earlier run. Any wider term needs a separate
 question to the operator.
 
 **Status values:** `not reached`, `ready to celebrate` (its test passes,
