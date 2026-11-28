@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: track-7-standby-test-pins-20261127
 project: arcadia
-status: active
+status: complete
 milestone: Track 7 standby test pins 20261127
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
@@ -151,11 +151,11 @@ actions:
     references: ["src/docs/planSummaries.ts", "tests/pin-plan-summary-shape.test.ts"]
   - id: pin-experiment-brief-path
     title: Pin the repository-relative path each experiment brief is written to, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin the repository-relative path each experiment brief is written to, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-experiment-brief-path-47943a4ba848; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-experiment-brief-path
     clarification: clarified
     confidence: high
@@ -171,7 +171,6 @@ actions:
     references: ["src/markdown/experimentBrief.ts", "tests/pin-experiment-brief-path.test.ts"]
 questions: []
 decisions: []
-current_action: pin-experiment-brief-path
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
