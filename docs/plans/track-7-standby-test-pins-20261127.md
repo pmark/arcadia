@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: track-7-standby-test-pins-20261127
 project: arcadia
-status: active
+status: complete
 milestone: Track 7 standby test pins 20261127
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
@@ -91,11 +91,11 @@ actions:
     references: ["src/db/nativeAddon.ts", "tests/pin-sqlite-error-guards.test.ts"]
   - id: pin-mission-log-markdown
     title: Pin how a Mission Log is rendered to Markdown, its fixed section order and its None and Unassigned fallbacks, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin how a Mission Log is rendered to Markdown, its fixed section order and its None and Unassigned fallbacks, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-mission-log-markdown-716d877fef00; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-mission-log-markdown
     clarification: clarified
     confidence: high
@@ -111,11 +111,11 @@ actions:
     references: ["src/markdown/missionLog.ts", "tests/pin-mission-log-markdown.test.ts"]
   - id: pin-cli-failure-envelope
     title: Pin the failure envelope built from a command name, an Arcadia error and an optional workspace, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin the failure envelope built from a command name, an Arcadia error and an optional workspace, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-cli-failure-envelope-ee8f8c84ffa4; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-cli-failure-envelope
     clarification: clarified
     confidence: high
@@ -131,11 +131,11 @@ actions:
     references: ["src/cli/response.ts", "tests/pin-cli-failure-envelope.test.ts"]
   - id: pin-plan-summary-shape
     title: Pin which values are accepted as a Plan summary of the current schema, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin which values are accepted as a Plan summary of the current schema, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-plan-summary-shape-6ebaad36de47; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-plan-summary-shape
     clarification: clarified
     confidence: high
@@ -151,11 +151,11 @@ actions:
     references: ["src/docs/planSummaries.ts", "tests/pin-plan-summary-shape.test.ts"]
   - id: pin-experiment-brief-path
     title: Pin the repository-relative path each experiment brief is written to, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin the repository-relative path each experiment brief is written to, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-experiment-brief-path-47943a4ba848; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-experiment-brief-path
     clarification: clarified
     confidence: high
@@ -171,7 +171,6 @@ actions:
     references: ["src/markdown/experimentBrief.ts", "tests/pin-experiment-brief-path.test.ts"]
 questions: []
 decisions: []
-current_action: pin-mission-log-markdown
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
