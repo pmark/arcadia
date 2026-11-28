@@ -7,7 +7,7 @@ status: active
 milestone: Track 6 standby test pins 20261127
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-11-27
+updated: 2026-11-28
 actions:
   - id: pin-orientation-urgency-score
     title: Pin how a Life-ledger entry's continuous urgency score is computed from its priority and due date, with a new test file.
@@ -91,11 +91,11 @@ actions:
     references: ["src/ask/directions.ts", "tests/pin-direction-target-parsing.test.ts"]
   - id: pin-allowed-value-assertion
     title: Pin how a value is checked against a fixed list of allowed values, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin how a value is checked against a fixed list of allowed values, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-allowed-value-assertion-937974aa676d; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-allowed-value-assertion
     clarification: clarified
     confidence: high
@@ -171,7 +171,7 @@ actions:
     references: ["src/intelligence/validation/validateRequirements.ts", "tests/pin-intelligence-requirement-checks.test.ts"]
 questions: []
 decisions: []
-current_action: pin-allowed-value-assertion
+current_action: pin-enrollment-request-identity
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
