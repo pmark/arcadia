@@ -131,11 +131,11 @@ actions:
     references: ["src/sessions/enrollmentRequestProtocol.ts", "tests/pin-enrollment-request-identity.test.ts"]
   - id: pin-back-burner-surface-checks
     title: Pin how a Back Burner item's manual, date and predicate surface conditions are judged without a database read, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin how a Back Burner item's manual, date and predicate surface conditions are judged without a database read, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-back-burner-surface-checks-915bd915671d; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-back-burner-surface-checks
     clarification: clarified
     confidence: high
@@ -171,7 +171,7 @@ actions:
     references: ["src/intelligence/validation/validateRequirements.ts", "tests/pin-intelligence-requirement-checks.test.ts"]
 questions: []
 decisions: []
-current_action: pin-back-burner-surface-checks
+current_action: pin-intelligence-requirement-checks
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
