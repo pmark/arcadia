@@ -31,11 +31,11 @@ actions:
     references: ["src/utils/time.ts", "tests/pin-local-date-parts.test.ts"]
   - id: pin-timeline-actor-label
     title: Pin how a timeline actor is labelled and how the timeline source footer is worded, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin how a timeline actor is labelled and how the timeline source footer is worded, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-timeline-actor-label-793a81e6cb16; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-timeline-actor-label
     clarification: clarified
     confidence: high
@@ -171,7 +171,7 @@ actions:
     references: ["src/markdown/experimentBrief.ts", "tests/pin-experiment-brief-path.test.ts"]
 questions: []
 decisions: []
-current_action: pin-timeline-actor-label
+current_action: pin-workspace-relative-path
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
