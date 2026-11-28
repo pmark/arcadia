@@ -634,6 +634,21 @@ describe("start-run executor: P2 state refusals consume nothing", () => {
   });
 });
 
+describe("start-run executor: the queue top passes over entries dispatch never runs (#2865, #2901)", () => {
+  const between = (entries: Array<Record<string, unknown>>) => (s: Record<string, any>) => { s.queue.ordered.splice(1, 0, ...entries); };
+  it("accepts deferred, done and requires_review entries between and above the pinned Actions", () => {
+    const b = box({ state: (s) => { between([{ orderKey: "arcadia/parked", status: "deferred", responsibility: "agent" }, { orderKey: "arcadia/review", status: "open", responsibility: "requires_review" }])(s); s.queue.ordered.unshift({ orderKey: "arcadia/finished", status: "done", responsibility: "agent" }); } });
+    const result = b.run("preflight");
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.receipt).toMatchObject({ outcome: "preflight_ok", phase: "P2", allowanceConsumed: false });
+  });
+  it("still refuses a runnable entry the card leaves out", () => {
+    const b = box({ state: between([{ orderKey: "arcadia/ready-other", status: "open", responsibility: "agent" }]) });
+    const headBefore = b.head();
+    expectRefusedClean(b, b.run("preflight"), "P2", /not the top of the queue in the pinned order/, headBefore);
+  });
+});
+
 describe("start-run executor: a registered relay coordinator under tmux is not a competing Session (#2286 item 7)", () => {
   const RELAY = "arcadia-coord-rowan-g2";
   it("tolerates exactly the registry's relay custodian, records it, and asks the registry about this Project", () => {

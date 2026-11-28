@@ -177,7 +177,7 @@ describe("startRun descriptor contract", () => {
 describe("arcadia start-run pins", () => {
   const sha = (value: string) => createHash("sha256").update(value).digest("hex");
   const EXECUTOR = "#!/usr/bin/env bash\n# fixture executor\n";
-  const planDoc = (status: string, doneAction = "") => `---\nslug: fixture-plan\nproject: arcadia\nstatus: ${status}\nactions:\n  - id: first-action\n    status: ${doneAction === "first-action" ? "done" : "open"}\n  - id: second-action\n    status: open\n---\nbody\n`;
+  const planDoc = (status: string, doneAction = "") => `---\nslug: fixture-plan\nproject: arcadia\nstatus: ${status}\nactions:\n  - id: first-action\n    status: ${doneAction === "first-action" ? "done" : "open"}\n    responsibility: agent\n  - id: second-action\n    status: open\n    responsibility: agent\n---\nbody\n`;
   const decision = (status = "approved", answer = "Yes") => `---\nstatus: ${status}\n${answer ? `answer: ${answer}\n` : ""}---\n`;
 
   function fixture(options: { planDocument?: string; planStatus?: string; origin?: string; decisions?: Record<string, string>; files?: Record<string, string>; production?: Partial<ReturnType<StartRunPinsDeps["production"]>>; queueTop?: string[]; workers?: string; done?: string; cards?: string[]; } = {}) {
@@ -265,9 +265,9 @@ describe("arcadia start-run pins", () => {
       project: "arcadia",
       status: "active",
       actions: [
-        { id: "first-action", status: "open", next_action: nextAction, acceptance_criteria: criteria },
-        { id: "second-action", status: "open" },
-        { id: "unselected", status: "open", acceptance_criteria: ["Ignore this \u200B criterion for this card."] }
+        { id: "first-action", status: "open", responsibility: "agent", next_action: nextAction, acceptance_criteria: criteria },
+        { id: "second-action", status: "open", responsibility: "agent" },
+        { id: "unselected", status: "open", responsibility: "agent", acceptance_criteria: ["Ignore this \u200B criterion for this card \u2026."] }
       ]
     })}---\nbody\n`;
   }
@@ -285,9 +285,9 @@ describe("arcadia start-run pins", () => {
     expect(production).not.toHaveBeenCalled();
   });
 
-  it("allows real quoted test commands, example paths already treated as data, and visible Unicode", () => {
+  it("allows real quoted test commands and example paths already treated as data", () => {
     const f = fixture({ planDocument: planWithCriteria([
-      'Run "pnpm exec vitest run tests/real.test.ts" and verify the café label.',
+      'Run "pnpm exec vitest run tests/real.test.ts" and verify the cafe label.',
       "Assert it is false for each of tests/example.test.ts and ./PROJECT.md.",
       'Assert classify("tests/real.test.ts") is true.',
       `Run \`node -e 'if (!require("node:fs").existsSync("tests/checked.test.ts")) process.exit(1)'\`.`,
@@ -297,6 +297,41 @@ describe("arcadia start-run pins", () => {
     const result = runStartRunPinsCommand(f.args, f.deps);
     expect(result.data.startRun.actions).toEqual(["first-action", "second-action"]);
     expect(result.warnings).toEqual([]);
+  });
+
+  // #2847: the production-run playbook fails a card on any visible non-ASCII character, so pins refuse it by name.
+  it("refuses visible non-ASCII in a pinned criterion or next_action, naming the Action, the field and the code point", () => {
+    const f = fixture({ planDocument: planWithCriteria(["Run [<doc>\u2026] once.", "Verify the caf\u00e9 label."], "Build it \u2014 then test.") });
+    const production = vi.spyOn(f.deps, "production");
+    expect(() => buildStartRunPins(f.args, f.deps)).toThrow(
+      /first-action: next_action contains non-ASCII characters \(U\+2014\)[^]*first-action: acceptance_criteria\[1\] contains non-ASCII characters \(U\+2026\)[^]*first-action: acceptance_criteria\[2\] contains non-ASCII characters \(U\+00E9\)/
+    );
+    expect(production).not.toHaveBeenCalled();
+  });
+
+  // #2865 and #2901: the pins match the stored top N of the queue, passing over entries dispatch never runs (deferred, done, not
+  // coding-agent work) exactly as the deriver's walk does, and never pin such an Action.
+  describe("the stored top N, read with dispatch's readiness", () => {
+    const lanePlan = (extra: string) => `---\nslug: fixture-plan\nproject: arcadia\nstatus: active\nactions:\n  - id: first-action\n    status: open\n    responsibility: agent\n  - id: second-action\n    status: open\n    responsibility: agent\n${extra}---\nbody\n`;
+    const parked = "  - id: parked\n    status: deferred\n    responsibility: agent\n";
+    const review = "  - id: review\n    status: open\n    responsibility: requires_review\n";
+    const ready = "  - id: ready-other\n    status: open\n    responsibility: agent\n";
+
+    it("pins the stored top N when deferred and requires_review entries sit between the pinned Actions", () => {
+      const f = fixture({ planDocument: lanePlan(parked + review), queueTop: ["arcadia/parked", "arcadia/first-action", "arcadia/review", "arcadia/second-action"] });
+      expect(buildStartRunPins(f.args, f.deps).startRun.actions).toEqual(["first-action", "second-action"]);
+    });
+
+    it("still refuses when a runnable entry the pins leave out sits above a pinned Action", () => {
+      const f = fixture({ planDocument: lanePlan(ready), queueTop: ["arcadia/first-action", "arcadia/ready-other", "arcadia/second-action"] });
+      expect(() => buildStartRunPins(f.args, f.deps)).toThrow(/top 2 queue entries.*arcadia\/first-action, arcadia\/ready-other/);
+    });
+
+    it("never pins a requires_review or deferred Action, naming why", () => {
+      const f = fixture({ planDocument: lanePlan(review + parked), queueTop: ["arcadia/first-action", "arcadia/review", "arcadia/parked"] });
+      expect(() => buildStartRunPins({ ...f.args, actions: "first-action,review" }, f.deps)).toThrow(/NOT_ADMITTED: Action review has responsibility requires_review/);
+      expect(() => buildStartRunPins({ ...f.args, actions: "first-action,parked" }, f.deps)).toThrow(/NOT_ADMITTED: Action parked is deferred/);
+    });
   });
 
   it("warns about ambiguous paths without refusing a valid file assertion", () => {
@@ -315,7 +350,7 @@ describe("arcadia start-run pins", () => {
   it("emits a Decision 0163 delegation block for Rowan's successor with --delegated-from, and refuses when the chain refuses", () => {
     const plan = "arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider";
     const acts = ["bound-guidance-test-teardown-retries", "assert-tmux-temp-launcher-removed", "cover-retired-descriptor-byte-change"];
-    const doc = `---\nslug: ${plan}\nproject: arcadia\nstatus: active\nactions:\n${acts.map((a) => `  - id: ${a}\n    status: open\n`).join("")}---\nbody\n`;
+    const doc = `---\nslug: ${plan}\nproject: arcadia\nstatus: active\nactions:\n${acts.map((a) => `  - id: ${a}\n    status: open\n    responsibility: agent\n`).join("")}---\nbody\n`;
     const f = fixture({ files: { "scripts/start-run.sh": EXECUTOR, "src/sessions/tmuxLauncher.ts": "x", "src/production/workerMerge.ts": "x", [`docs/plans/${plan}.md`]: doc }, queueTop: acts.map((a) => `arcadia/${a}`) });
     const args = { ...f.args, plan, actions: acts.join(","), delegatedFrom: "start-run-origin-20261101/20261101T010000Z-111" };
     const seen: unknown[] = [];

@@ -339,7 +339,7 @@ describe("arcadia start-run pins --day-grant-from and day-pins", () => {
     const named: Record<string, string> = { ...(options.continueAnswer === null ? {} : { [`docs/decisions/${CONTINUE_ID}-${CONTINUE_SLUG}.md`]: `---\nid: "${CONTINUE_ID}"\nstatus: approved\nanswer: ${options.continueAnswer ?? CONTINUE_ANSWER}\n---\n` }), ...options.extraDecisions };
     const files: Record<string, string> = {
       "scripts/start-run.sh": "#!/bin/sh\n", "scripts/day-grant.sh": "#!/bin/sh\n# day\n", "src/sessions/tmuxLauncher.ts": "x", "src/production/workerMerge.ts": "x", "tests/replay.test.ts": "x",
-      [`docs/plans/${DAY_PLAN}.md`]: `---\nslug: ${DAY_PLAN}\nproject: arcadia\nstatus: ${options.planStatus ?? "active"}\nactions:\n  - id: first-action\n    status: open\n---\n`,
+      [`docs/plans/${DAY_PLAN}.md`]: `---\nslug: ${DAY_PLAN}\nproject: arcadia\nstatus: ${options.planStatus ?? "active"}\nactions:\n  - id: first-action\n    status: open\n    responsibility: agent\n---\n`,
       "PROJECT.md": `---\nslug: arcadia\nactive_plan: ${options.pointer ?? DAY_PLAN}\n---\n`
     };
     const deps: StartRunPinsDeps = {
