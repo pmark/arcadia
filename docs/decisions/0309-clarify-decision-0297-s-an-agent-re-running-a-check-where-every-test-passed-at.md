@@ -1,0 +1,41 @@
+---
+arcadia: v1
+type: decision
+id: "0309"
+slug: clarify-decision-0297-s-an-agent-re-running-a-check-where-every-test-passed-at
+project: arcadia
+status: approved
+question: "Clarify Decision 0297's \"an agent re-running a check where every test passed (at most once per version)\": record the operator's reconfirmed answer \"A\", under which a re-run where setup failed before any test ran still counts as clean, from now on, once per version and logged."
+gap_type: missing-decision
+gate_question: approval_boundary
+recommendation: A. yes, from now on, once per version and logged
+options:
+  - label: A. yes, from now on, once per version and logged
+    consequence: Yes, from now on, once per version and logged. Repeated causes still need a real fix.
+    recommended: true
+  - label: B. yes, and also recheck the two earlier runs marked not clean
+    consequence: Yes, and also recheck the two earlier runs marked not clean.
+    recommended: false
+  - label: C. no change
+    consequence: No change.
+    recommended: false
+confidence: high
+plan: track-7-standby-test-pins-20261127
+updated: 2026-11-28
+answer: A. yes, from now on, once per version and logged
+decided: 2026-11-28
+---
+
+# Decision 0309: Clarify Decision 0297's "an agent re-running a check where every test passed (at most once per version)": record the operator's reconfirmed answer "A", under which a re-run where setup failed before any test ran still counts as clean, from now on, once per version and logged.
+
+## Options
+
+- **A. yes, from now on, once per version and logged** (recommended): Yes, from now on, once per version and logged. Repeated causes still need a real fix.
+- **B. yes, and also recheck the two earlier runs marked not clean**: Yes, and also recheck the two earlier runs marked not clean.
+- **C. no change**: No change.
+
+## Rationale
+
+Operator words, verified per Decision 0229 A by Rowan g12 (read-only) and re-read read-only by Claudia Mason (governance-records helper under Rowan g12) from Signal 21's session transcript f9f4b2e7-c7c1-43fe-9335-bebc4d66be2d (/Users/pmark/.claude/projects/-Users-pmark-Dev-PrivatePracticeNow-platform/f9f4b2e7-c7c1-43fe-9335-bebc4d66be2d.jsonl). BASIS, the reconfirmation (the only source of this record's terms). QUESTION: the assistant message at file line 2091, 2026-11-28T16:28:53.407Z (8:28 AM PST Sat 11-28), uuid 1c0ad7af-410d-48ef-a5f9-088281da57ec, under "Waiting on you", item 2. Verbatim, with Markdown emphasis removed and the block quote joined: 'Reconfirm your answer so it can be recorded under the next number, 0309: A: a re-run still counts as clean when setup failed before any test ran, from now on, once per version and logged. Repeated causes still need a real fix.' The message closes: 'Reply Merge #3193, and A, or Merge only.' ANSWER: the operator's own human-origin user message (origin.kind human) at file line 2175, 2026-11-28T17:05:44.265Z (9:05 AM PST Sat 11-28), uuid 83610511-1359-472d-92f2-e2f44e694371, verbatim: 'Merge #3193, and A'. Only its "A" answers this question; "Merge #3193" is a separate instruction that this record does not cover and grants nothing for. Decision 0229 A's 30-minute limit runs to 2026-11-28T17:35:44Z. HISTORY ONLY, not the basis: the operator's first answer to the same question, the optional question in Signal 21's digest at file line 1029, 2026-11-28T04:31:38.363Z, uuid d8a04b27-e4d8-4582-bb1b-998d52e8684c, with options 'A (recommended): yes, from now on, once per version and logged. Repeated causes still need a real fix. / B: yes, and also recheck the two earlier runs marked not clean. / C: no change.', and his answer at file line 1129, 2026-11-28T05:15:53.684Z (9:15 PM PST Fri 11-27), uuid 958ff06e-ed5a-4234-801d-924056a31a10, 'should a re-run still count as clean when setup failed before any test ran? / A (recommended): yes'. That answer was more than 30 minutes old by the time it could be recorded, so he reconfirmed it at line 2175. RECORDED MEANING (option A), only in line 2091's words: "a re-run still counts as clean when setup failed before any test ran, from now on, once per version and logged. Repeated causes still need a real fix." The re-run is the re-run kind in Decision 0297 (C1), "an agent re-running a check where every test passed (at most once per version)", which this answer clarifies; "Repeated causes still need a real fix" is Decision 0297's existing learning rule ("a cause recurring twice must get a real fix. If it happens a third time without one, it no longer counts as clean."), which this record does not change. UNCHANGED: every other term of Decisions 0288, 0297 and 0298, including every other kind of agent help and what is not clean; declaring any Milestone reached stays the operator's alone. Decision 0297 is not edited. docs/milestones.md changes only its "Agent help kinds" paragraph to quote this answer, in the same candidate; no Milestone status or run record changes. SUPERSEDES: the unmerged PR #3195, whose record was drafted as Decision 0307; that number was taken on main by a different Decision (a sign-in diagnostic), and #3195 is not to be merged. NOT ADOPTED: this record adds no term lines 1029 and 2091 did not show. Option B's recheck of the two earlier runs marked not clean is not recorded: no past run is recounted and no earlier verdict changes (the menu does not name those two runs). It does not define "setup" or "version" beyond his words, and it does not cover a re-run after any test ran and failed, a re-run more than once per version, an unlogged re-run, an edit by hand, a governance step mid-run, or a host repair that changes files or records. Any such wider term needs a separate question to the operator. This draft grants nothing and approves nothing. Only the answer recorded through arcadia decision approve, and the operator's merge of its record PR, put it in force.
+
+Proposed by Agent Ask claudia-mason-0297-setup-failure-rerun-r2-20261128.
