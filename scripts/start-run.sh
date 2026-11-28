@@ -1538,7 +1538,7 @@ run_phases() {
   echo "== START run executor: $ID ($MODE) =="
   phase_p0
   phase_p1
-  [[ "$MODE" != run ]] || phase_p2_quiet_host  # Issue #3189: a press only; before P2's state checks, so they stay fresh at P3
+  if [[ "$MODE" == run ]]; then phase_p2_quiet_host; fi  # Issue #3189: a press only; before P2's state checks, so they stay fresh at P3
   phase_p2
   if [[ "$MODE" == preflight ]]; then
     PHASE="P2"; PHASE_NAME="state"; REASON=""

@@ -1120,6 +1120,6 @@ describe("start-run executor: the in-card quiet-host check (#3189)", () => {
     const constant = (name: string) => Number(new RegExp(`^${name}=(\\d+)$`, "m").exec(EXECUTOR_SOURCE)?.[1]);
     expect(["QUIET_HOST_SAMPLE_SECONDS", "QUIET_HOST_POLL_SECONDS", "QUIET_HOST_MAX_GAP_MS", "QUIET_HOST_PAIR_GAP_MS", "QUIET_HOST_MAX_LOAD1"].map(constant)).toEqual([90, 2, 25000, 22000, 8]);
     expect(constant("QUIET_HOST_MAX_GAP_MS")).toBeLessThan(constant("HEARTBEAT_SIGN_IN_LEAD_WAIT_SECONDS") * 1000);
-    expect(EXECUTOR_SOURCE).toContain(`[[ "$MODE" != run ]] || phase_p2_quiet_host`);
+    expect(EXECUTOR_SOURCE).toContain(`if [[ "$MODE" == run ]]; then phase_p2_quiet_host; fi`);
   });
 });
