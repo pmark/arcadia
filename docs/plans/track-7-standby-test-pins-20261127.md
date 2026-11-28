@@ -111,11 +111,11 @@ actions:
     references: ["src/markdown/missionLog.ts", "tests/pin-mission-log-markdown.test.ts"]
   - id: pin-cli-failure-envelope
     title: Pin the failure envelope built from a command name, an Arcadia error and an optional workspace, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin the failure envelope built from a command name, an Arcadia error and an optional workspace, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-cli-failure-envelope-ee8f8c84ffa4; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-cli-failure-envelope
     clarification: clarified
     confidence: high
@@ -171,7 +171,7 @@ actions:
     references: ["src/markdown/experimentBrief.ts", "tests/pin-experiment-brief-path.test.ts"]
 questions: []
 decisions: []
-current_action: pin-cli-failure-envelope
+current_action: pin-plan-summary-shape
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
