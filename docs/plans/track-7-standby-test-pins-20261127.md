@@ -131,11 +131,11 @@ actions:
     references: ["src/cli/response.ts", "tests/pin-cli-failure-envelope.test.ts"]
   - id: pin-plan-summary-shape
     title: Pin which values are accepted as a Plan summary of the current schema, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin which values are accepted as a Plan summary of the current schema, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-plan-summary-shape-6ebaad36de47; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-plan-summary-shape
     clarification: clarified
     confidence: high
@@ -171,7 +171,7 @@ actions:
     references: ["src/markdown/experimentBrief.ts", "tests/pin-experiment-brief-path.test.ts"]
 questions: []
 decisions: []
-current_action: pin-plan-summary-shape
+current_action: pin-experiment-brief-path
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
