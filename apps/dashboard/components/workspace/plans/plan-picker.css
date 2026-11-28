@@ -1,0 +1,15 @@
+.plan-picker-controls { display: flex; flex-wrap: wrap; gap: 8px 12px; margin: 12px 0 6px; }
+.plan-picker-controls label { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--route-soft); }
+.plan-picker-controls select { min-height: 32px; border-radius: 8px; border: 1px solid var(--route-line); background: rgb(255 255 255 / .06); color: var(--route-ink); font-size: 13px; padding: 0 6px; }
+.plan-picker-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.plan-picker-item { padding: 10px 12px; border: 1px solid var(--route-line); border-radius: 12px; overflow-wrap: anywhere; }
+.plan-picker-title { color: var(--route-ink); font-size: 14px; line-height: 1.4; }
+.plan-picker-meta { display: flex; flex-wrap: wrap; gap: 2px 10px; margin: 4px 0 0; font-size: 11px; color: var(--route-soft); }
+.plan-picker-status { text-transform: uppercase; letter-spacing: .04em; }
+.plan-picker-flag { margin: 6px 0 0; font-size: 12px; line-height: 1.4; }
+.plan-picker-flag.done { color: var(--route-tone-open); }
+.plan-picker-flag.dup { color: var(--route-tone-blocked); }
+.plan-picker-flag.active { color: var(--route-tone-moving); }
+.plan-picker-group { margin-top: 14px; }
+.plan-picker-group-title { margin: 0 0 6px; font-size: 13px; color: var(--route-soft); text-transform: capitalize; }
+.plan-picker-group-title span { font-weight: 400; }

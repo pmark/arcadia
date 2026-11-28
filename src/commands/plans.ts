@@ -30,6 +30,8 @@ export interface PlanRow {
   /** For an ungoverned plan, the paragraph under its own trigger heading, when it has one. */
   activationNote: string | null;
   relativePath: string;
+  /** The Plan document's own `updated:` date, a cheap staleness signal; null when it states none. */
+  updated: string | null;
 }
 
 export interface PlansCommandData {
@@ -85,7 +87,8 @@ export function runPlansCommand(options: { repo: string; project?: string; disco
       isActivePlan: project.activePlan === plan.slug,
       actionCounts: countActions(plan),
       activationNote: null,
-      relativePath: plan.relativePath
+      relativePath: plan.relativePath,
+      updated: plan.updated ?? null
     })),
     ...ungoverned
   ].sort((a, b) => a.slug.localeCompare(b.slug));
@@ -134,7 +137,8 @@ export function runPlansCommand(options: { repo: string; project?: string; disco
       isActivePlan: false,
       actionCounts: null,
       activationNote: findActivationNote(body),
-      relativePath
+      relativePath,
+      updated: typeof front.updated === "string" ? front.updated : null
     };
   }
 }
