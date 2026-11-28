@@ -16,6 +16,38 @@ The operator plans each day in the Arcadia Workspace, and production runs it una
    - Per-project queues and concurrency: when the two concurrency proofs named in Decisions 0066 and 0071 are done.
    - Curating the draft-Plan backlog: when G's picker ships, as its first real use.
 
+### Plans A-D and the freeze
+
+Four draft Plans were registered on main by #3114 after "Approve plans A through D". Each is in `docs/plans/<slug>.md` (#3114). The letters are labels. Nothing in the sources puts A-D in an order beyond the admissions below.
+
+- **A**, `one-stop-never-ends-the-card-20261126` (milestone "One stop never ends the card 20261126") (#3114).
+- **B**, `production-runs-clean-by-itself-20261126` (milestone "Production runs clean by itself 20261126") (#3114).
+- **C**, `nights-never-run-empty-20261126` (milestone "Nights never run empty 20261126") (#3114).
+- **D**, `coordinator-and-refusals-recover-without-the-operator-20261126` (milestone "Coordinator and refusals recover without the operator 20261126") (#3114).
+
+#3114 says the Plans are registered as inactive drafts and that nothing is activated or queued.
+
+**Freeze.** The engine is frozen at `a5f041066`. A PR that changes an engine path merges only as a fix for a named failed-night cause, or when it is admitted through the freeze. Production worker candidates (the night lane) are exempt (docs/strategy/current.md, "Phase 1: Freeze and prove" and the admission sections).
+
+**Order stated for A-D** (docs/strategy/current.md, "Admission (Thu 2026-11-26): '1B 2B, sequenced'"):
+
+- Now: coding sessions build the safety set, starting with "those two fixes": Plan A Action 2 (`continue-past-a-stopped-action`) and Plan B Action 4 (`launch-production-builds-on-the-plan-model-rule`).
+- Once both fixes have merged: production may build these Plans' Actions overnight, after a full rule-1 dress rehearsal, with its clean-run count starting at 0. It is a new run shape under Decision 0288 rule 2, and its PRs park for the operator's merge or a C-03 merge.
+- The night-continuity pieces (Plan C Actions 3 and 4, Plan D Action 3) follow the safety set (the source does not order them against the overnight builds). Their new press-path code needs an unstubbed rule-1 rehearsal before live use.
+
+**Admitted through the freeze** (docs/strategy/current.md, the admission sections; each admitted PR cites its Phase-cause Issue as `Phase-cause: #N`):
+
+| Admission | Admitted | Admission Issue |
+|---|---|---|
+| "1A 2A" (Wed 2026-11-25) | #3033, #3036, #3006, #3028, #3025, #2980 | each PR's own cause: #3029, #3030, #3005, #3015, #3017, #2976 |
+| "1B 2B, sequenced" (Thu 2026-11-26) | Plan A Actions 1 to 3; Plan B Actions 1 to 4; Plan C Actions 1 to 4; Plan D Actions 2 and 3; Plan D Action 1 (#3080) once its N2 is repaired; #3083 (B12) as reviewed; #2960 (B9) after its rebase | #3116 |
+| "Yes, A" on #3122 (Thu 2026-11-26, evening) | the small #3122 fix (`scripts/start-run.sh` only) | #3158 |
+| "Pressed, A" on the in-card quiet check (Fri 2026-11-27, afternoon) | the in-card quiet check plus the #3184 fix (`scripts/start-run.sh`, and the dashboard status under `apps/dashboard/`) | #3189 |
+
+Not admitted: the worker-thread fix #3154 waits for the next checkpoint, and every other held engine PR (docs/strategy/current.md, "Pressed, A" section). #3136 is admitted as Plan A Action 2 (docs/strategy/current.md, "Yes, A" section).
+
+**F, G and H.** Their order above is unchanged, and the sources do not place A-D relative to them (see the gap under Open Decisions). The freeze still applies to their engine PRs: G's Plan picker PRs #2996 and #3039 are held, not admitted (docs/strategy/current.md, "Checkpoint verdict" and "1B 2B, sequenced").
+
 ## Capability map (owner Plan#Action; status lives there)
 
 | Capability | Owner |
@@ -39,6 +71,10 @@ The operator plans each day in the Arcadia Workspace, and production runs it una
 - In-run merges overnight (draft `ellis-decision-in-run-merges-20261118`).
 - Publishing controller settle commits (menu question G).
 - Judging authority by the files an Action changes, so derived cards can run work. Not drafted yet; without it the standing grant derives nothing.
+- Gap: the sources do not state how Plans A-D are ordered against F, G and H (docs/strategy/current.md; #3114). Not decided here.
+- Gap: the sources do not order A, B, C and D against each other, beyond Plan A Action 2 and Plan B Action 4 coming first and Plan C Actions 3 and 4 and Plan D Action 3 following the safety set (docs/strategy/current.md, "1B 2B, sequenced"). Letters are labels only.
+- Gap: the "safety set" that coding sessions build is named only by its start ("starting with those two fixes"). Its other members and their order are not listed (docs/strategy/current.md, "1B 2B, sequenced").
+- Gap: the order of the in-card quiet check (#3189) against Plans A-D is not stated. The source says only that it is built after Track 6 card B's run (docs/strategy/current.md, "Pressed, A").
 
 Decided, with a later governed step still to come: Decision 0246 (answer A, 2026-11-16) renews Decision 0191 once two automatic handoffs are on record. The renewal itself is that later step.
 
