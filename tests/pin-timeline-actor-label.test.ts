@@ -16,10 +16,10 @@ function source(durationMs: number, error: string | null): Source {
 
 describe("actorLabel", () => {
   it.each([
-    ["codex", "gamma", "low", "codex·gamma?"],
+    ["codex", "gamma", "low", "codex\u00b7gamma?"],
     ["claude", null, "high", "claude"],
     ["unknown", null, "low", "unknown"],
-    ["opencode", "beta", "high", "opencode·beta"]
+    ["opencode", "beta", "high", "opencode\u00b7beta"]
   ] as const)("labels tool %s, name %s, confidence %s as %j", (tool, name, confidence, expected) => {
     expect(actorLabel(event(tool, name, confidence))).toBe(expected);
   });
