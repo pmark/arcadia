@@ -26,6 +26,8 @@
  *   The title is `thread_name` in `~/.codex/session_index.jsonl`.
  */
 
+import { PANE_SIGNAL_CATALOG } from "../production/sessionSignals.js";
+
 export const COORDINATOR_BUDGET_SCHEMA = "arcadia-coordinator-budget-v1" as const;
 
 /** The design's starting values, to be recalibrated after ten recorded renewals. */
@@ -109,7 +111,19 @@ export type Occupancy =
       /** The timestamp of the line the tokens came from. */
       at: string | null;
     }
-  | { kind: "unmeasured"; reason: string };
+  | { kind: "unmeasured"; reason: string }
+  /** The session's own last reply says its context no longer fits: forced, whatever the last usage read (#3077). */
+  | { kind: "limit"; reason: string };
+
+/** The existing context-exhaustion wording (`sessionSignals.ts`), matched only against the session's own API-error reply. */
+const CONTEXT_LIMIT_PATTERNS = PANE_SIGNAL_CATALOG.filter((entry) => entry.class === "context_exhaustion").map((entry) => entry.pattern);
+
+function replyText(message: Record<string, unknown> | null): string {
+  const content = message?.content;
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content.map((part) => text(record(part)?.text) ?? "").join(" ");
+}
 
 export interface SessionRead {
   agent: CoordinatorAgent;
@@ -175,12 +189,14 @@ export function readClaudeTranscript(
   let maxPreTokens = 0;
   const turnIds = new Set<string>();
   let anonymousTurns = 0;
+  /** The last main-chain context-limit reply with no real turn or compaction after it. */
+  let contextLimit: { said: string; at: string | null } | null = null;
 
   for (const line of content.split("\n")) {
     if (line === "") continue;
     const isTitle = line.includes("\"custom-title\"");
     const isBoundary = line.includes("\"compact_boundary\"");
-    const isAssistant = line.includes("\"assistant\"") && line.includes("\"usage\"");
+    const isAssistant = line.includes("\"assistant\"") && (line.includes("\"usage\"") || line.includes("\"isApiErrorMessage\""));
     if (!isTitle && !isBoundary && !isAssistant) continue;
     const entry = parse(line);
     if (!entry) continue;
@@ -196,12 +212,18 @@ export function readClaudeTranscript(
       postTokens = count(meta?.postTokens);
       episodeStart = text(entry.timestamp) ?? episodeStart;
       usage = null;
+      contextLimit = null;
       turnIds.clear();
       anonymousTurns = 0;
       continue;
     }
     if (entry.type !== "assistant") continue;
     const message = record(entry.message);
+    if (entry.isApiErrorMessage === true) {
+      const said = replyText(message).trim();
+      if (CONTEXT_LIMIT_PATTERNS.some((pattern) => pattern.test(said))) contextLimit = { said: said.slice(0, 120), at: text(entry.timestamp) };
+      continue;
+    }
     const lineModel = text(message?.model);
     const lineUsage = record(message?.usage);
     if (!lineUsage || lineModel === "<synthetic>") continue;
@@ -210,6 +232,7 @@ export function readClaudeTranscript(
     const read = count(lineUsage.cache_read_input_tokens);
     if (input === null && created === null && read === null) continue;
     model = lineModel ?? model;
+    contextLimit = null;
     usage = { tokens: (input ?? 0) + (created ?? 0) + (read ?? 0), at: text(entry.timestamp) };
     anyUsage = true;
     const id = text(message?.id);
@@ -217,6 +240,9 @@ export function readClaudeTranscript(
   }
 
   const base = { agent: "claude" as const, sessionId, title, model, episodeStart, turns: turnIds.size + anonymousTurns, noUsageYet: !anyUsage };
+  if (contextLimit) {
+    return { ...base, occupancy: { kind: "limit", reason: `its last reply${contextLimit.at ? ` (${contextLimit.at})` : ""} is "${contextLimit.said}"` } };
+  }
   const tokens = usage ?? (postTokens !== null ? { tokens: postTokens, at: episodeStart } : null);
   const tokensSource = usage ? "transcript usage" : "transcript compact_boundary.postTokens";
   if (!tokens) return { ...base, occupancy: { kind: "unmeasured", reason: "no main-chain assistant usage in the transcript yet" } };
@@ -283,6 +309,7 @@ export function readCodexRollout(content: string, title: string | null = null): 
 
 export function levelOf(occupancy: Occupancy): BudgetLevel {
   if (occupancy.kind === "unmeasured") return "unmeasured";
+  if (occupancy.kind === "limit") return "forced";
   if (occupancy.percent >= BUDGET_THRESHOLDS.forced) return "forced";
   if (occupancy.percent >= BUDGET_THRESHOLDS.due) return "due";
   if (occupancy.percent >= BUDGET_THRESHOLDS.prepare) return "prepare";
@@ -338,6 +365,7 @@ export function decidePage(
   const paged: Partial<Record<PageLevel, PagedRecord>> =
     previous && previous.episodeStart === read.episodeStart ? { ...previous.paged } : {};
   const level = levelOf(read.occupancy);
+  if (read.occupancy.kind === "limit") return { page: paged.forced ? null : "forced", paged };
   if (read.occupancy.kind === "measured") {
     if (level === "ok" || level === "unmeasured") return { page: null, paged };
     return { page: paged[level] ? null : level, paged };
@@ -391,6 +419,9 @@ export function budgetPingMessage(read: SessionRead & { sessionId: string }, pag
   const key = budgetEpisodeKey(read.agent, read.sessionId, page);
   const tail = ` It sees this on its next turn through \`arcadia coordinator budget\`. Nothing was started (${key}).`;
   const occupancy = read.occupancy;
+  if (occupancy.kind === "limit") {
+    return fitBudgetPing(`👆👆👆 HANDOFF OVERDUE: ${name} hit its context limit — start its successor now: ${SUCCESSOR}.`, ` Forced because ${occupancy.reason}.`, tail);
+  }
   if (occupancy.kind === "unmeasured" || page === "unmeasured") {
     const reason = occupancy.kind === "unmeasured" ? occupancy.reason : "unreadable";
     return fitBudgetPing(
