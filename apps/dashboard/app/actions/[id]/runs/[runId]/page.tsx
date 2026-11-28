@@ -19,7 +19,9 @@ interface Run {
   runDirectory: string;
   descriptor: { title: string; problem: string; desiredEffect: string; authority: { does: string[]; never_does: string[] }; success: { effect: string; next: string }; failure: { effect: string; next: string } };
 }
-interface RunResponse { script: { id: string; title: string; problem: string; desiredEffect: string; authority: Run["descriptor"]["authority"]; success: Run["descriptor"]["success"]; failure: Run["descriptor"]["failure"] }; run: Run; output: { stdout: string; stderr: string }; error?: string }
+/** Issue #3189: a START card's own phase, from its executor receipt (null for any other entry). */
+interface StartRunProgress { phase: string; phaseName: string; outcome: string; reason: string; statusLine: string | null }
+interface RunResponse { script: { id: string; title: string; problem: string; desiredEffect: string; authority: Run["descriptor"]["authority"]; success: Run["descriptor"]["success"]; failure: Run["descriptor"]["failure"] }; run: Run; startRun?: StartRunProgress | null; output: { stdout: string; stderr: string }; error?: string }
 
 export default function OperatorActionRunPage() {
   const params = useParams<{ id: string; runId: string }>();
@@ -73,6 +75,7 @@ export default function OperatorActionRunPage() {
 
 function ResultView({ data }: { data: RunResponse }) {
   const { run, script, output } = data;
+  const statusLine = data.startRun?.statusLine ?? null;
   const outcome = run.status === "succeeded" ? script.success : script.failure;
   return (
     <div className="grid gap-4">
@@ -81,6 +84,7 @@ function ResultView({ data }: { data: RunResponse }) {
           <StatusIcon status={run.status} />
           <div className="min-w-0">
             <h2 className="text-lg font-semibold">{run.status === "running" ? "Action is running" : run.status === "succeeded" ? "Action completed" : "Action failed"}</h2>
+            {statusLine ? <p className="mt-1 text-sm font-semibold" role="status" data-testid="start-run-status">{statusLine}</p> : null}
             <p className="mt-1 text-sm text-muted">{run.message ?? (run.status === "running" ? "The result will update here until the host records a terminal state." : outcome.effect)}</p>
           </div>
         </div>

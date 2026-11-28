@@ -37,7 +37,15 @@ if (slow?.from === "lead" && state.worker.pid === state.worker.newPid && state.w
 }
 const leadSlow = slow?.from === "lead" && slow.started === true && state.worker.signedIn !== true && (!slow.landed || slow.relapses === true);
 const slowNow = Boolean(slow) && (slow.from === "start" || (slow.from === "restart" && state.worker.pid === state.worker.newPid) || (slow.from === "sign-in" && state.worker.signedIn === true) || leadSlow);
-if (state.worker.alive && state.worker.heartbeat === "fresh" && existsSync(heartbeatFile)) {
+// Issue #3184, `periodSeconds`: once the late beat landed and until the sign-in, the worker beats only on its own period
+// (fake-sleep.mjs), so a call leaves the beat alone, and each Off or capacity guard takes `guardSeconds` of the virtual clock.
+const periodic = slow?.from === "lead" && slow.landed === true && slow.periodSeconds !== undefined && state.worker.signedIn !== true;
+if (periodic && (key2 === "production status" || key2 === "production capacity") && state.virtualClock === true) {
+  const offsetFile = process.env.START_RUN_CLOCK_OFFSET_FILE;
+  const offset = (() => { try { return Number(readFileSync(offsetFile, "utf8")) || 0; } catch { return 0; } })();
+  writeFileSync(offsetFile, String(offset + (slow.guardSeconds ?? 0) * 1000));
+}
+if (!periodic && state.worker.alive && state.worker.heartbeat === "fresh" && existsSync(heartbeatFile)) {
   const beat = JSON.parse(readFileSync(heartbeatFile, "utf8"));
   beat.at = slowNow ? Date.now() - 40_000 : Date.now();
   writeFileSync(heartbeatFile, JSON.stringify(beat));

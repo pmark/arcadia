@@ -2,6 +2,7 @@ import { access, open, readFile, realpath, rename, stat, unlink, writeFile } fro
 import path from "node:path";
 import { NextResponse } from "next/server";
 import { claimLaunch, processIsRunning, resolveLibraryEntry, SAFE_KEY, type OperatorScriptRun } from "../../../route";
+import { loadStartRunProgress } from "../../../../../../lib/startRunProgress";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -104,6 +105,8 @@ export async function GET(
         repeatable: descriptor.repeatable === true
       },
       run: visibleRun,
+      // Issue #3189: a START card says what it is doing ("checking host") from its executor receipt; null for any other entry.
+      startRun: await loadStartRunProgress(entry.library, entry.id, resolvedRunDirectory),
       output: {
         stdout: await readTail(path.join(resolvedRunDirectory, "stdout.log")),
         stderr: await readTail(path.join(resolvedRunDirectory, "stderr.log"))
