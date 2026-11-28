@@ -143,10 +143,16 @@ interface BoxOptions {
   /** Issue #3030: a worker that beats once per slow tick. From `from` on, each executor step finds its last beat 40 s old;
    * a wait (the fake `sleep`) lets the next beat land only if it `recovers`. */
   slowTick?: { from: "start" | "restart" | "sign-in"; recovers: boolean; during?: SlowTickDuring }
-    /** Issue #3122: one long gap from P4's capacity guard until `arrivesAfterSeconds` of waiting; `relapses` reopens it once closed. */
-    | { from: "lead"; recovers: boolean; arrivesAfterSeconds?: number; relapses?: boolean; during?: SlowTickDuring };
+    /** Issue #3122: one long gap from P4's capacity guard until `arrivesAfterSeconds` of waiting; `relapses` reopens it once closed.
+     * Issue #3184: with `periodSeconds` the worker then beats steadily every periodSeconds of a virtual clock, and each Off or
+     * capacity guard in P4 takes `guardSeconds` of it. */
+    | { from: "lead"; recovers: boolean; arrivesAfterSeconds?: number; relapses?: boolean; periodSeconds?: number; guardSeconds?: number; during?: SlowTickDuring };
   /** The fixture-only wait bound in seconds (.start-run-test-fixture, default 4); 40 keeps the real 36 s lead wait and 16 s tick. */
   fixtureWait?: number;
+  /** Issue #3189: the pre-restart worker's beat gaps in seconds on a virtual clock while the quiet-host check samples it. */
+  quietBeats?: number[];
+  /** Issue #3189: the load1 the fake `sysctl -n vm.loadavg` reports (default 1.25), or null for a read that fails. */
+  load1?: number | null;
   /** Earlier finished sequences of other cards recorded today in the ledger (Decision 0162: never a reason to refuse). */
   dayUsed?: boolean;
   plist?: boolean;
@@ -363,7 +369,11 @@ function box(options: BoxOptions = {}) {
   shim("launchctl", `exec node "${path.join(fixtures, "fake-launchctl.mjs")}" "$@"`);
   shim("fake-release-node", `exec node "${path.join(fixtures, "fake-release-node.mjs")}" "$@"`);
   shim("timeout", 'shift; exec "$@"');
-  shim("sleep", options.slowTick ? `exec node "${path.join(fixtures, "fake-sleep.mjs")}" "$@"` : "exit 0");
+  const virtualClock = options.quietBeats !== undefined || (options.slowTick?.from === "lead" && options.slowTick.periodSeconds !== undefined);
+  shim("sleep", options.slowTick || options.quietBeats ? `exec node "${path.join(fixtures, "fake-sleep.mjs")}" "$@"` : "exit 0");
+  // Issue #3189: the quiet-host check reads load1 with `sysctl -n vm.loadavg` (macOS's "{ 1m 5m 15m }" shape).
+  shim("sysctl", options.load1 === null ? 'echo "sysctl: unknown oid" >&2; exit 1'
+    : `if [ "$1 $2" = "-n vm.loadavg" ]; then echo "{ ${(options.load1 ?? 1.25).toFixed(2)} 1.10 1.05 }"; exit 0; fi; exit 1`);
   // `ps -o ppid= -p <pid>`: 3333 is the source-run worker the tsx CLI (launchd PID 1111) runs as its direct child.
   shim("ps", `if [ "$1" = "-axo" ]; then
   echo "  4242     1 tmux: pane shell"
@@ -402,7 +412,8 @@ esac`);
     capacity: { observation: { providers: [{ providerId: "claude-code-cli", admitted: true, code: null, reason: "5-hour 20%", receipt: { source: "claude_status_line" } }] } },
     freeze: "allow", broker: { revision: installed, ready: true, transports: true },
     ensure: { fail: false }, activate: { mode: "ok" }, planRunner: { mode: "ok" },
-    worker: { pid: 1111, alive: true, heartbeat: options.preWorker === "stale" ? "frozen" : "fresh", newPid: process.pid, ...(options.slowTick ? { slowTick: options.slowTick } : {}) }
+    worker: { pid: 1111, alive: true, heartbeat: options.preWorker === "stale" ? "frozen" : "fresh", newPid: process.pid, ...(options.slowTick ? { slowTick: options.slowTick } : {}), ...(options.quietBeats ? { quietBeats: { gaps: options.quietBeats } } : {}) },
+    ...(virtualClock ? { virtualClock: true } : {})
   };
   options.state?.(state);
   writeFileSync(path.join(root, "state.json"), JSON.stringify(state, null, 2));
@@ -439,7 +450,7 @@ esac`);
     const base: NodeJS.ProcessEnv = {
       ...process.env, ...GIT_ENV, PATH: `${bin}:${process.env.PATH}`, HOME: home, FAKE_ROOT: root, FAKE_BIN: bin, FAKE_ARCADIA_ROOT: repoRoot,
       ...(options.delegation === "before-decision" ? clockEnv(BEFORE_DECISION_NOW) : {}),
-      ...(options.clockJump || options.slowTick?.during?.clockJumpMs !== undefined ? {
+      ...(options.clockJump || options.slowTick?.during?.clockJumpMs !== undefined || virtualClock ? {
         START_RUN_CLOCK_OFFSET_FILE: path.join(root, "clock-offset"),
         NODE_OPTIONS: [process.env.NODE_OPTIONS, `--import=${pathToFileURL(path.join(fixtures, "fake-clock-offset.mjs")).href}`].filter(Boolean).join(" ")
       } : {}),
@@ -949,12 +960,52 @@ describe("start-run executor: a slow-tick worker heartbeat (#3030)", () => {
     expect(existsSync(path.join(b.workspace, ".arcadia", "claude-renewal-days"))).toBe(false);
   }, 120_000);
 
+  // Issue #3184: after the long lead wait the guards take a few seconds to re-run, and a fixed 16 s budget after them tolerated a
+  // steady beat period only up to about 16 s plus that time. The re-check now waits for the rest of the 36 s gap since the last
+  // beat (never less than 16 s). Here the worker beats steadily on a virtual clock and each Off or capacity guard takes 5 s of it,
+  // so the lead beat is about 10 s old after the re-run, as live (#3184 measured 10 s), and the next beat is waited for.
+  const periodic = (periodSeconds: number) => box({ fixtureWait: 40, quietBeats: [10], slowTick: { from: "lead", recovers: true, arrivesAfterSeconds: 25, periodSeconds, guardSeconds: 5 } });
+  it("a steady 30 s beat period passes the rechecked guards: the budget is the rest of the 36 s gap, below the sign-in's 55 s wait", () => {
+    const b = periodic(30);
+    const result = b.run();
+    expect(result.status, result.stderr + result.stdout).toBe(0);
+    expect(result.receipt).toMatchObject({ outcome: "succeeded", phase: "P6", allowanceConsumed: true, productionActivated: true });
+    const record = result.receipt!.record;
+    expect(record).toMatchObject({
+      signInLeadHeartbeatWait: { outcome: "fresh", polls: 14 }, signInLeadGuardRecheck: { polls: 14, budgetSeconds: 36, boundSeconds: 16 },
+      signInLeadRecheckBudget: { toleratedGapSeconds: 36, floorSeconds: 16 }, signInLeadRecheckHeartbeatWait: { outcome: "fresh" }
+    });
+    // The beat read after the guards is their 10 s (plus real run time) old, so the budget is what is left of 36 s.
+    expect(record.signInLeadRecheckBudget.beatAgeMsAfterGuards).toBeGreaterThanOrEqual(10000);
+    expect(record.signInLeadRecheckBudget.budgetSeconds).toBe(36 - Math.floor(record.signInLeadRecheckBudget.beatAgeMsAfterGuards / 1000));
+    expect(record.signInLeadRecheckBudget.budgetSeconds).toBeGreaterThan(16);
+    // More than the old 16 s of polls (9) were needed: the old budget refused this steady worker after the card was consumed.
+    expect(record.signInLeadRecheckHeartbeatWait.polls).toBeGreaterThan(9);
+    expect(record.signInLeadRecheckBudget.budgetSeconds + 8).toBeLessThan(WORKER_RECEIPT_WAIT_MS / 1000);
+    expect(b.sequence()).toEqual(["go-broker ensure", "worker-install", "start-run sign-in", "production activate"]);
+  }, 120_000);
+
+  it("a steady 40 s beat period, beyond the tolerated 36 s gap, still refuses after the rechecked guards before the sign-in", () => {
+    const b = periodic(40);
+    const result = b.run();
+    expect(result.status).not.toBe(0);
+    expect(result.receipt).toMatchObject({ outcome: "refused", phase: "P4", allowanceConsumed: true, productionActivated: false });
+    const budget = result.receipt!.record.signInLeadRecheckBudget.budgetSeconds;
+    expect(budget).toBeGreaterThan(16);
+    expect(budget).toBeLessThanOrEqual(26);
+    expect(result.receipt!.reason).toMatch(new RegExp(`after the rechecked sign-in guards: no beat younger than 8000 ms within ${budget} s; the sign-in sequence was not invoked`));
+    expect(b.sequence()).toEqual(["go-broker ensure", "worker-install"]);
+  }, 120_000);
+
   it("the lead wait plus the lead stays at most 50 s and below the sign-in's wait for the worker's receipt", () => {
     const constant = (name: string) => Number(new RegExp(`^${name}=(\\d+)$`, "m").exec(EXECUTOR_SOURCE)?.[1]);
     const tolerated = constant("HEARTBEAT_SIGN_IN_LEAD_WAIT_SECONDS") + constant("HEARTBEAT_SIGN_IN_LEAD_MS") / 1000;
     expect([constant("HEARTBEAT_SIGN_IN_LEAD_WAIT_SECONDS"), constant("HEARTBEAT_SIGN_IN_GUARD_SECONDS"), constant("HEARTBEAT_SIGN_IN_LEAD_MS")]).toEqual([36, 16, 8000]);
     expect(tolerated).toBeLessThanOrEqual(50);
     expect(tolerated).toBeLessThan(WORKER_RECEIPT_WAIT_MS / 1000);
+    // Issue #3184: the re-check budget is at most the lead wait (the rest of its gap) and at least one 16 s tick.
+    expect(EXECUTOR_SOURCE).toContain("recheck_budget=$HEARTBEAT_SIGN_IN_GUARD_SECONDS");
+    expect(EXECUTOR_SOURCE).toContain("recheck_budget=$(( HEARTBEAT_SIGN_IN_LEAD_WAIT_SECONDS - beat_age_ms / 1000 ))");
   });
 
   // Review B1 of PR #3036: after an activation wait that polled more than once, nothing checked before it is that old at the activation.
@@ -973,4 +1024,102 @@ describe("start-run executor: a slow-tick worker heartbeat (#3030)", () => {
     expect(b.sequence()).toEqual(["go-broker ensure", "worker-install", "start-run sign-in"]);
     expect(b.readState().production.desiredState).toBe("inactive");
   }, 120_000);
+});
+
+describe("start-run executor: the in-card quiet-host check (#3189)", () => {
+  // A press samples the pre-restart worker's usage beat and load1 for about 90 s before P2's state checks, and refuses "host not
+  // quiet" with nothing consumed, so the same card stays pressable. The fixture shortens the window to its wait bound: 40 s here
+  // (21 samples at a 2 s poll) on a virtual clock that a fake sleep moves on, or 4 s (3 samples) by default.
+  const p2StateCalls = (b: Box) => b.calls().filter((call) => call.tool === "arcadia" && (call.args.includes("--check-only") || call.args.slice(0, 2).join(" ") === "production freeze-check"));
+  const heartbeatFile = (b: Box) => path.join(b.workspace, ".arcadia", "worker-claude-usage-heartbeat.json");
+  const refusedQuiet = (b: Box, result: ReturnType<Box["run"]>, reason: RegExp, p2CallsBefore = 0) => {
+    expectRefusedClean(b, result, "P2", reason, b.pin);
+    expect(result.receipt!.phaseName).toBe("quiet_host");
+    expect(result.receipt!.reason).toMatch(/^host not quiet: .*; nothing was consumed, so press this same card again once the host is quiet$/);
+    expect(result.receipt!.record.quietHost).toMatchObject({ quiet: false, bounds: { maxGapMs: 25000, pairGapMs: 22000, maxLoad1: 8 } });
+    // Refused before P2's state checks ran, and before the allowance: no <id>.consumed.json.
+    expect(p2StateCalls(b)).toHaveLength(p2CallsBefore);
+    expect(existsSync(b.marker)).toBe(false);
+  };
+
+  it("passes a quiet host, records every sample, and runs the press on to START", () => {
+    const b = box({ fixtureWait: 40, quietBeats: [12, 14, 10] });
+    const result = b.run();
+    expect(result.status, result.stderr + result.stdout).toBe(0);
+    expect(result.receipt).toMatchObject({ outcome: "succeeded", phase: "P6", allowanceConsumed: true, productionActivated: true });
+    const quiet = result.receipt!.record.quietHost;
+    expect(quiet).toMatchObject({ quiet: true, windowSeconds: 40, polls: 21, unreadHeartbeats: 0, unreadLoads: 0, maxLoad1: 1.25, consecutiveGapsAbovePair: false });
+    expect(quiet.samples).toHaveLength(21);
+    expect(quiet.beatGapsMs.slice(0, 3)).toEqual([12000, 14000, 10000]);
+    expect(quiet.maxGapMs).toBeLessThanOrEqual(14000);
+    expect(quiet.evidence).toMatch(/^quiet over 21 samples in \d+ s \(beat gaps 12, 14, 10, /);
+    // The check runs first in run mode, before P2's state checks, and says so on the live output.
+    const log = result.read("run.log")!;
+    expect(log).toContain("==> Checking host: about 40 s of worker beats and load before anything is consumed");
+    expect(log.indexOf("==> P2 quiet_host")).toBeGreaterThan(log.indexOf("==> P1 repo"));
+    expect(log.indexOf("==> P2 quiet_host")).toBeLessThan(log.indexOf("==> P2 state"));
+    expect(b.sequence()).toEqual(["go-broker ensure", "worker-install", "start-run sign-in", "production activate"]);
+  }, 120_000);
+
+  it("refuses a beat gap above 25 s with nothing consumed, and the same card passes when pressed again on a quiet host", () => {
+    const b = box({ fixtureWait: 40, quietBeats: [12, 27, 12] });
+    const result = b.run();
+    refusedQuiet(b, result, /^host not quiet: a beat gap of 27 s \(at most 25 s\) over 21 samples/);
+    expect(result.handoff).toContain("press this same card again");
+    // A second press of the same card, once the worker beats steadily again.
+    const state = b.readState();
+    state.worker.quietBeats = { gaps: [10] };
+    writeFileSync(path.join(b.root, "state.json"), JSON.stringify(state, null, 2));
+    const again = b.run();
+    expect(again.status, again.stderr + again.stdout).toBe(0);
+    expect(again.receipt).toMatchObject({ outcome: "succeeded", allowanceConsumed: true, productionActivated: true });
+    expect(again.receipt!.record.quietHost.quiet).toBe(true);
+  }, 120_000);
+
+  it("refuses two consecutive beat gaps above 22 s even when each is within 25 s", () => {
+    const b = box({ fixtureWait: 50, quietBeats: [23, 24, 10] });
+    const result = b.run();
+    refusedQuiet(b, result, /^host not quiet: two consecutive beat gaps above 22 s over 26 samples/);
+    expect(result.receipt!.reason).not.toContain("a beat gap of");
+    expect(result.receipt!.record.quietHost).toMatchObject({ consecutiveGapsAbovePair: true, maxGapMs: 24000 });
+  }, 120_000);
+
+  it("refuses an open gap: a beat older than 25 s at the end of the window", () => {
+    const b = box({ fixtureWait: 40, quietBeats: [60] });
+    refusedQuiet(b, b.run(), /^host not quiet: a beat gap of 4\d(\.\d)? s \(at most 25 s\)/);
+  }, 120_000);
+
+  it.each<[string, number | null, RegExp]>([
+    ["a load1 above 8", 9.5, /^host not quiet: load1 9\.5 \(at most 8\) over 3 samples/],
+    ["a load1 that cannot be read", null, /^host not quiet: load1 could not be read at 3 of 3 samples over 3 samples/]
+  ])("refuses %s with nothing consumed", (_label, load1, reason) => {
+    const b = box({ load1 });
+    refusedQuiet(b, b.run(), reason);
+  }, 120_000);
+
+  it("refuses a worker heartbeat that cannot be read with nothing consumed", () => {
+    const b = box({ state: (s) => { s.worker.heartbeat = "frozen"; } });
+    writeFileSync(heartbeatFile(b), "{ not json");
+    const result = b.run();
+    refusedQuiet(b, result, /^host not quiet: the worker heartbeat could not be read at 3 of 3 samples over 3 samples in \d+ s \(beat gaps none; max load1 1\.25\)/);
+    expect(result.receipt!.record.quietHost).toMatchObject({ unreadHeartbeats: 3, maxGapMs: null });
+  }, 120_000);
+
+  it("a preflight skips the check, so an unreadable load does not refuse it, while a press of the same card refuses", () => {
+    const b = box({ load1: null });
+    const preflight = b.run("preflight");
+    expect(preflight.status, preflight.stderr + preflight.stdout).toBe(0);
+    expect(preflight.receipt).toMatchObject({ outcome: "preflight_ok", phase: "P2", phaseName: "state" });
+    expect(preflight.receipt!.record.quietHost).toBeUndefined();
+    expect(preflight.read("run.log")).not.toContain("quiet_host");
+    const p2CallsBefore = p2StateCalls(b).length;
+    refusedQuiet(b, b.run(), /^host not quiet: load1 could not be read/, p2CallsBefore);
+  }, 120_000);
+
+  it("pins the bounds the operator admitted: about 90 s at a 2 s poll, a 25 s gap, 22 s pairs and load1 8, below the 36 s tolerance", () => {
+    const constant = (name: string) => Number(new RegExp(`^${name}=(\\d+)$`, "m").exec(EXECUTOR_SOURCE)?.[1]);
+    expect(["QUIET_HOST_SAMPLE_SECONDS", "QUIET_HOST_POLL_SECONDS", "QUIET_HOST_MAX_GAP_MS", "QUIET_HOST_PAIR_GAP_MS", "QUIET_HOST_MAX_LOAD1"].map(constant)).toEqual([90, 2, 25000, 22000, 8]);
+    expect(constant("QUIET_HOST_MAX_GAP_MS")).toBeLessThan(constant("HEARTBEAT_SIGN_IN_LEAD_WAIT_SECONDS") * 1000);
+    expect(EXECUTOR_SOURCE).toContain(`[[ "$MODE" != run ]] || phase_p2_quiet_host`);
+  });
 });

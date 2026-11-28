@@ -358,6 +358,8 @@ function box(options: BoxOptions = {}) {
   shim("fake-release-node", `exec node "${path.join(fixtures, "fake-release-node.mjs")}" "$@"`);
   shim("timeout", 'shift; exec "$@"');
   shim("sleep", options.slowTick ? `exec node "${path.join(fixtures, "fake-sleep.mjs")}" "$@"` : "exit 0");
+  // Issue #3189: the quiet-host check reads load1 with `sysctl -n vm.loadavg` (macOS's "{ 1m 5m 15m }" shape).
+  shim("sysctl", `if [ "$1 $2" = "-n vm.loadavg" ]; then echo "{ 1.25 1.10 1.05 }"; exit 0; fi; exit 1`);
   // `ps -o ppid= -p <pid>`: 3333 is the source-run worker the tsx CLI (launchd PID 1111) runs as its direct child.
   shim("ps", `if [ "$1" = "-axo" ]; then
   echo "  4242     1 tmux: pane shell"
