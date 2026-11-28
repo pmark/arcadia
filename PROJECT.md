@@ -9,7 +9,7 @@ outcome: The operator states a desired outcome; Arcadia clarifies it, routes it 
 milestone: Track 6 standby test pins 20261127
 active_plan: track-6-standby-test-pins-20261127
 updated: 2026-11-28
-current_action: pin-enrollment-request-identity
+current_action: pin-back-burner-surface-checks
 ---
 
 # Arcadia

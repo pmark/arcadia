@@ -111,11 +111,11 @@ actions:
     references: ["src/domain/constants.ts", "tests/pin-allowed-value-assertion.test.ts"]
   - id: pin-enrollment-request-identity
     title: Pin how a protected enrollment request's identities and mode are read from an environment, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin how a protected enrollment request's identities and mode are read from an environment, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-enrollment-request-identity-5ffc8edd85f5; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-enrollment-request-identity
     clarification: clarified
     confidence: high
@@ -171,7 +171,7 @@ actions:
     references: ["src/intelligence/validation/validateRequirements.ts", "tests/pin-intelligence-requirement-checks.test.ts"]
 questions: []
 decisions: []
-current_action: pin-enrollment-request-identity
+current_action: pin-back-burner-surface-checks
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
