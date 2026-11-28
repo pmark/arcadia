@@ -10,6 +10,7 @@
 #
 # Phases (each writes receipt.json and failure-handoff.md in its run directory):
 #   P0 context   P1 repo   P2 state                (read-only; a refusal consumes and changes nothing)
+#                P2 quiet_host, run mode only, before P2 state: about 90 s of beat and load1 samples (Issue #3189)
 #   P3 consume   write <id>.consumed.json exclusively (the first mutation), fast-forward the clean checkout to the pin only
 #   P4 install   go-broker ensure; verify; only then reinstall the pinned worker label from the pinned compiled release
 #                (protected) and restart it; observe and bind the new worker; then (Decision 0161) the sign-in sequence:
@@ -53,6 +54,19 @@ HEARTBEAT_SIGN_IN_LEAD_MS=8000
 # stalled as long as the card tolerates still answers in time; tests/start-run-executor-standing-start.test.ts asserts both.
 HEARTBEAT_SIGN_IN_LEAD_WAIT_SECONDS=36
 HEARTBEAT_SIGN_IN_GUARD_SECONDS=16
+# Issue #3184: the guard re-run after a long lead wait takes about 4-10 s live, so the re-check waits one tick plus the measured
+# re-run time (at most HEARTBEAT_SIGN_IN_GUARD_RUN_CAP_SECONDS of it), not one tick from the end of the guards. Steady beat gaps up
+# to about 30 s then pass; the wait stays bounded (16 + 16 + the 8 s lead = 40 s, below the sign-in's 55 s receipt wait).
+HEARTBEAT_SIGN_IN_GUARD_RUN_CAP_SECONDS=16
+# Issue #3189 (the operator's admission "Pressed, A"): in run mode, before P2's state checks and so before P3 consumes the card,
+# the card samples the worker's usage heartbeat and load1 for QUIET_HOST_SAMPLE_SECONDS and refuses "host not quiet", consuming
+# nothing, when a beat gap exceeds QUIET_HOST_MAX_GAP_MS (#3184's bound), two consecutive gaps exceed QUIET_HOST_PAIR_GAP_MS, or
+# load1 exceeds QUIET_HOST_MAX_LOAD1. A preflight skips it: it must stay fast, and every press samples the host itself.
+QUIET_HOST_SAMPLE_SECONDS=90
+QUIET_HOST_POLL_SECONDS=2
+QUIET_HOST_MAX_GAP_MS=25000
+QUIET_HOST_PAIR_GAP_MS=22000
+QUIET_HOST_MAX_LOAD1=8
 ACTIVATION_RUNNER_TIMEOUT_SECONDS=300
 PRESS_RECORD_MAX_AGE_MS=120000
 WORKER_INSTALL_TIMEOUT_SECONDS=180
@@ -964,6 +978,57 @@ check_no_competing_session() {
 }
 
 # ---------------------------------------------------------------------------------------------------------------
+# P2 quiet_host (run mode only, Issue #3189)
+# ---------------------------------------------------------------------------------------------------------------
+# load1 from `sysctl -n vm.loadavg` ("{ 1.23 1.45 1.67 }" on macOS; the card runs as the operator, outside any agent sandbox).
+read_load1() {
+  local out
+  out="$(sysctl -n vm.loadavg 2>/dev/null)" || return 1
+  out="$(awk '{ gsub(/[{}]/, ""); print $1 }' <<<"$out")"
+  [[ "$out" =~ ^[0-9]+([.][0-9]+)?$ ]] || return 1
+  printf '%s' "$out"
+}
+# Samples the worker's last usage beat (read_worker_binding) and load1 every QUIET_HOST_POLL_SECONDS: a fixed number of samples,
+# never past QUIET_HOST_SAMPLE_SECONDS of real time, with no retry. The beat gaps are the differences between the distinct beats
+# seen plus the open gap at the last readable sample (its age). Read-only; it runs before P2's state checks, so they stay as
+# fresh at P3 as before. An unfit host refuses "host not quiet: <evidence>" with nothing consumed: the card stays pressable.
+phase_p2_quiet_host() {
+  local samples="[]" limit polls=0 started hb load verdict
+  phase P2 quiet_host
+  echo "==> Checking the host is quiet (about ${QUIET_HOST_SAMPLE_SECONDS} s) before anything is consumed"
+  limit=$(( QUIET_HOST_SAMPLE_SECONDS / QUIET_HOST_POLL_SECONDS + 1 ))
+  started=$(date +%s)
+  while (( polls < limit )); do
+    polls=$(( polls + 1 ))
+    hb="$(read_worker_binding 2>/dev/null)" && jq -e '(.heartbeatAt | type == "number") and (.ageMs | type == "number")' <<<"$hb" >/dev/null 2>&1 || hb=null
+    load="$(read_load1)" || load=null
+    samples="$(jq -c --argjson hb "$hb" --argjson load "$load" '. + [{at: $hb.heartbeatAt, ageMs: $hb.ageMs, load1: $load}]' <<<"$samples")"
+    (( polls < limit && $(date +%s) - started < QUIET_HOST_SAMPLE_SECONDS )) || break
+    sleep "$QUIET_HOST_POLL_SECONDS"
+  done
+  verdict="$(jq -c --argjson gapBound "$QUIET_HOST_MAX_GAP_MS" --argjson pairBound "$QUIET_HOST_PAIR_GAP_MS" --argjson loadBound "$QUIET_HOST_MAX_LOAD1" \
+    --argjson window "$QUIET_HOST_SAMPLE_SECONDS" --argjson waited "$(( $(date +%s) - started ))" '
+    def s: (. / 100 | floor) / 10;
+    . as $samples | [.[] | select(.at != null)] as $read | ([$read[].at] | unique) as $beats
+    | ([range(1; $beats | length) as $i | $beats[$i] - $beats[$i - 1]] + (if ($read | length) > 0 then [$read[-1].ageMs] else [] end)) as $gaps
+    | ($gaps | max) as $maxGap | ([$samples[].load1 | select(. != null)] | max) as $maxLoad
+    | ([range(1; $gaps | length) as $i | select($gaps[$i - 1] > $pairBound and $gaps[$i] > $pairBound)] | length > 0) as $pair
+    | [ if ($read | length) == 0 then "the worker heartbeat could not be read" else empty end,
+        if $maxGap != null and $maxGap > $gapBound then "a beat gap of \($maxGap | s) s (at most \($gapBound | s) s)" else empty end,
+        if $pair then "two consecutive beat gaps above \($pairBound | s) s" else empty end,
+        if any($samples[]; .load1 == null) then "load1 could not be read" else empty end,
+        if $maxLoad != null and $maxLoad > $loadBound then "load1 \($maxLoad) (at most \($loadBound))" else empty end ] as $unfit
+    | {quiet: ($unfit | length == 0), evidence: ((if ($unfit | length) > 0 then $unfit | join("; ") else "fit" end)
+         + " over \($samples | length) samples in \($waited) s (gaps \([$gaps[] | s] | map(tostring) | join(", ")) s; max load1 \($maxLoad))"),
+       windowSeconds: $window, waitedSeconds: $waited, polls: ($samples | length), beatGapsMs: $gaps, maxGapMs: $maxGap,
+       consecutiveGapsAbovePair: $pair, maxLoad1: $maxLoad, bounds: {maxGapMs: $gapBound, pairGapMs: $pairBound, maxLoad1: $loadBound}, samples: $samples}' <<<"$samples")"
+  rec quietHost "$verdict"
+  echo "==> Host check: $(jq -r '.evidence' <<<"$verdict")"
+  jq -e '.quiet == true' <<<"$verdict" >/dev/null \
+    || refuse "host not quiet: $(jq -r '.evidence' <<<"$verdict"); nothing was consumed, so press this same card again once the host is quiet"
+}
+
+# ---------------------------------------------------------------------------------------------------------------
 # P2 state
 # ---------------------------------------------------------------------------------------------------------------
 phase_p2() {
@@ -1403,7 +1468,8 @@ main() {
     local fixture_wait; fixture_wait="$(<"$LIBRARY_DIR/.start-run-test-fixture")"
     if [[ "$fixture_wait" =~ ^[0-9]+$ ]]; then WORKER_WAIT_SECONDS="$fixture_wait"; TRANSPORT_WAIT_SECONDS="$fixture_wait"; HEARTBEAT_WAIT_SECONDS="$fixture_wait"
       (( fixture_wait >= HEARTBEAT_SIGN_IN_LEAD_WAIT_SECONDS )) || HEARTBEAT_SIGN_IN_LEAD_WAIT_SECONDS="$fixture_wait"
-      (( fixture_wait >= HEARTBEAT_SIGN_IN_GUARD_SECONDS )) || HEARTBEAT_SIGN_IN_GUARD_SECONDS="$fixture_wait"; fi
+      (( fixture_wait >= HEARTBEAT_SIGN_IN_GUARD_SECONDS )) || HEARTBEAT_SIGN_IN_GUARD_SECONDS="$fixture_wait"
+      (( fixture_wait >= QUIET_HOST_SAMPLE_SECONDS )) || QUIET_HOST_SAMPLE_SECONDS="$fixture_wait"; fi
   fi
   mkdir -p "$RUN_DIR"
   # The phases run as a background stage whose output goes through a FIFO into tee -a run.log (no process substitution, so it also
