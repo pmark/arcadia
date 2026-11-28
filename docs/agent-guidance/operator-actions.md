@@ -259,6 +259,33 @@ pinned descriptor, so per-card review is small.
   refuse pinning. Spell out the characters as escapes in the governed Plan.
   Review any test-path warnings before preparing the descriptor and clarify
   which paths are examples and which the Action must deliver.
+- **Another Project's Plan.** The card still lives in Arcadia's library (a
+  Project library may never hold `startRun` or `planActivation`). Add
+  `--project <slug>` to `start-run pins`: when that Project's registered
+  repository (workspace `repo_path`) is not Arcadia's, the Plan is read there at
+  its own origin main, and the card pins
+  `startRun.projectRepository {path, origin, reviewedRevision}` beside Arcadia's
+  own `reviewedRevision` (still the executor, required Decisions and runtime).
+  For Arcadia's own Project, `--project` changes nothing. Such a card is
+  operator-pressed only: no `--delegated-from` or `--day-grant-from`, and a
+  standing-grant derived card never carries the pin. At the press the
+  executor reads the Plan, `PROJECT.md` and the Project's Decisions in that
+  checkout. It refuses, consuming nothing, unless the checkout is the
+  registered primary checkout, clean on `main`, with the pinned origin, and at
+  exactly the pinned revision, which is also its origin main. The card never
+  fetches, fast-forwards or resets it. A draft Plan's `planActivation` names
+  that checkout, and the shared runner settles and publishes there (only for a
+  card in the library of the checkout the runner runs from). The in-card
+  sign-in sequence runs under Arcadia's own Project (`PROJECT.md` at the pin),
+  so its Decision 0161 diagnostic is numbered and published in Arcadia.
+  Publication recovery is manual for such a card: if the activation settles
+  locally and then fails `PUBLICATION_FAILED`, the Project checkout holds an
+  unpublished settlement commit, so the consumed card cannot be re-pressed and
+  a fresh card refuses at P1 (HEAD is not its pin). Restore origin, then run
+  the shared runner on the same descriptor
+  (`node scripts/run-plan-amendment.mjs <descriptor> run` from Arcadia's main
+  checkout); it publishes the existing settlement without applying again.
+  Then prepare a fresh card at the new origin main.
 - **What one press may do:** fast-forward the clean main checkout to the pinned sha
   only, `go-broker ensure`, then reinstall the pinned worker label from that
   compiled release (`worker install --replace-label`, run by the release itself,

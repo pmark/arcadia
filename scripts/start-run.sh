@@ -85,6 +85,9 @@ process.stdout.write(s)})'
 arcadia_t() { local t="$1"; shift; (cd "$ARCADIA_REPO" && timeout "$t" mise exec -- pnpm -s arcadia "$@" | json_envelope); }
 arcadia() { arcadia_t 180 "$@"; }  # REF:L63
 git_repo() { git -C "$ARCADIA_REPO" "$@"; }
+# The repository holding the Plan, PROJECT.md and the Project's own Decisions: this checkout, or (startRun.projectRepository)
+# another Project's registered primary checkout at its own pinned revision PLAN_PIN. Set from the descriptor in run_phases.
+plan_git() { git -C "$PLAN_REPO" "$@"; }
 pin() { jq -er ".startRun.$1" "$DESCRIPTOR"; }
 pin_json() { jq -ec ".startRun.$1" "$DESCRIPTOR"; }
 sha256_file() { node -e 'process.stdout.write(require("crypto").createHash("sha256").update(require("fs").readFileSync(process.argv[1])).digest("hex"))' "$1"; }
@@ -318,6 +321,25 @@ check_origin_is_pin() {  # REF:L195-L196
   remote_line="$(timeout 30 git -C "$ARCADIA_REPO" ls-remote origin refs/heads/main)" || refuse "origin main could not be observed within 30 seconds"
   [[ "${remote_line%%[[:space:]]*}" == "$PIN" ]] || refuse "origin main is ${remote_line%%[[:space:]]*}, not the reviewed revision $PIN; origin main has moved (or been rewound): ask for a fresh card"
 }
+# A second Project's card (startRun.projectRepository): its registered primary checkout, where the Plan, PROJECT.md and the
+# Project's Decisions are read, must be that checkout's toplevel, clean on main with the pinned origin, and at exactly its pinned
+# revision, which is also its origin main. The card never fetches, fast-forwards or resets it, so a moved or dirty checkout
+# refuses. The P2 gate read also requires it to be the workspace's registered repository. No-op for an Arcadia card.
+check_project_checkout() {  # $1: where, for the refusal ("" in P1)
+  local top common remote_line head
+  [[ "$PROJECT_REPOSITORY" == null ]] && return 0
+  top="$(cd "$PLAN_REPO" 2>/dev/null && pwd -P)" || refuse "the Project repository $PLAN_REPO is missing$1"
+  [[ "$top" == "$PLAN_REPO" && "$(plan_git rev-parse --show-toplevel 2>/dev/null)" == "$PLAN_REPO" ]] || refuse "the Project repository $PLAN_REPO is not a checkout's toplevel$1"
+  common="$(plan_git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || refuse "the Project repository $PLAN_REPO is not a git checkout$1"
+  [[ "$(cd "$common" 2>/dev/null && pwd -P)" == "$PLAN_REPO/.git" ]] || refuse "the Project repository $PLAN_REPO is not a primary checkout$1"
+  [[ "$(plan_git branch --show-current)" == main ]] || refuse "the Project checkout $PLAN_REPO must be on main$1"
+  [[ -z "$(plan_git status --porcelain=v1 --untracked-files=all)" ]] || refuse "the Project checkout $PLAN_REPO must be clean (uncommitted or untracked files present)$1"
+  [[ "$(plan_git remote get-url origin 2>/dev/null)" == "$(jq -r '.origin' <<<"$PROJECT_REPOSITORY")" ]] || refuse "the Project checkout $PLAN_REPO's origin is not the pinned origin$1"
+  remote_line="$(timeout 30 git -C "$PLAN_REPO" ls-remote origin refs/heads/main)" || refuse "the Project's origin main could not be observed within 30 seconds$1"
+  [[ "${remote_line%%[[:space:]]*}" == "$PLAN_PIN" ]] || refuse "the Project's origin main is ${remote_line%%[[:space:]]*}, not its pinned revision $PLAN_PIN; it has moved (or been rewound): ask for a fresh card$1"
+  head="$(plan_git rev-parse HEAD)"
+  [[ "$head" == "$PLAN_PIN" ]] || refuse "the Project checkout $PLAN_REPO is at $head, not its pinned revision $PLAN_PIN; the card does not move it$1"
+}
 check_production_off() {  # REF:L277-L284, ADOPT:L83-L90
   local status
   STATUS="$(arcadia production status --json)" || refuse "production status could not be read"
@@ -371,7 +393,9 @@ check_queue() {  # REF:L286-L289, L359-L360. $1 = "before" or "after" the option
 check_operator_gate() {  # Issue #2038: `advance queue` and `production preview` never read the operator gate that holds a launch
   local gate args=() id
   while IFS= read -r id; do args+=(--action "$id"); done <<<"$(jq -r '.[]' <<<"$ACTION_IDS_JSON")"
-  gate="$(arcadia start-run gate-check --project "$PROJECT" "${args[@]}" --repository "$ARCADIA_REPO" --workspace "$WORKSPACE" --json)" || refuse "the operator gate could not be read for the pinned Actions (arcadia start-run gate-check failed)"
+  # A second Project's Decisions are read in its own checkout, which must be the workspace's registered repository (G1).
+  [[ "$PROJECT_REPOSITORY" == null ]] || args+=(--require-registered-repository)
+  gate="$(arcadia start-run gate-check --project "$PROJECT" "${args[@]}" --repository "$PLAN_REPO" --workspace "$WORKSPACE" --json)" || refuse "the operator gate could not be read for the pinned Actions (arcadia start-run gate-check failed)"
   printf '%s\n' "$gate" > "$RUN_DIR/operator-gate-$PHASE.json"
   jq -e '.ok == true and (.data.blocking | type == "array")' <<<"$gate" >/dev/null || refuse "the operator gate read is not a valid answer"
   rec operatorGateBlocking "$(jq -c '.data.blocking | length' <<<"$gate")"
@@ -758,6 +782,12 @@ phase_p0() {
   for tool in git jq mise timeout node launchctl ps tmux; do command -v "$tool" >/dev/null || refuse "$tool is required on PATH"; done  # REF:L159
   [[ "$(cd "$LIBRARY_DIR/../../.." && pwd -P)" == "$ARCADIA_REPO" ]] || refuse "this card does not live in the library of the checkout that holds this executor"
   jq -e '.schema == "arcadia-operator-script-v1" and .kind == "grant" and (.startRun.schema == "arcadia-start-run-v1")' "$DESCRIPTOR" >/dev/null || refuse "the descriptor is not a START grant with a startRun block"
+  if [[ "$PROJECT_REPOSITORY" != null ]]; then  # G1: a second Project's card; only the operator presses it
+    jq -e '(keys == ["origin", "path", "reviewedRevision"]) and (.path | type == "string" and startswith("/")) and (.origin | type == "string" and length > 0) and (.reviewedRevision | type == "string" and test("^[0-9a-f]{40}$"))' <<<"$PROJECT_REPOSITORY" >/dev/null \
+      || refuse "startRun.projectRepository needs exactly an absolute path, an origin and a 40-hex reviewedRevision"
+    [[ "$DELEGATION" == null ]] || refuse "a card for another Project's repository is pressed by the operator only; it carries no delegation"
+    [[ "$PLAN_REPO" != "$ARCADIA_REPO" ]] || refuse "startRun.projectRepository names the executor's own checkout; an Arcadia card carries none"
+  fi
   check_preserved_history
   # Hashes are pinned in the independent final review's host-local manifest: the card pair and this executor.  REF:L161
   check_reviewed_hashes
@@ -862,10 +892,20 @@ phase_p1() {
   for file in $(jq -r '.startRun.requiredFiles[]' "$DESCRIPTOR"); do  # REF:L206-L208
     git_repo cat-file -e "$PIN:$file" 2>/dev/null || refuse "$file is missing at the reviewed revision $PIN; merge it and ask for a fresh card"
   done
-  git_repo cat-file -e "$PIN:docs/plans/$PLAN.md" 2>/dev/null || refuse "the Plan file docs/plans/$PLAN.md is missing at $PIN"  # REF:L203
+  # The Plan and PROJECT.md: at the pin here, or in a second Project's checkout at its own pin (PLAN_REPO, PLAN_PIN).
+  check_project_checkout ""
+  if [[ "$PROJECT_REPOSITORY" != null ]]; then
+    rec projectRepository "$PROJECT_REPOSITORY"
+    # The in-card sign-in sequence (P4) records its Decision 0161 diagnostic in this checkout, so it runs under the Project this
+    # checkout holds (PROJECT.md at the pin), never the second Project: settlement would route that Ask into the other repository.
+    SIGN_IN_PROJECT="$(git_repo show "$PIN:PROJECT.md" | frontmatter_json | jq -r '.slug // ""')" || refuse "PROJECT.md frontmatter could not be read at $PIN"
+    [[ "$SIGN_IN_PROJECT" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ && "$SIGN_IN_PROJECT" != "$PROJECT" ]] || refuse "PROJECT.md at $PIN names no Project other than $PROJECT for the sign-in sequence"
+    rec_str signInProject "$SIGN_IN_PROJECT"
+  fi
+  plan_git cat-file -e "$PLAN_PIN:docs/plans/$PLAN.md" 2>/dev/null || refuse "the Plan file docs/plans/$PLAN.md is missing at $PLAN_PIN"  # REF:L203
   if [[ "$DELEGATION_DECISION" == 0173 ]]; then check_day_grant_at_pin "$tree"; fi
-  plan_fm="$(git_repo show "$PIN:docs/plans/$PLAN.md" | frontmatter_json)" || refuse "the Plan frontmatter could not be read at $PIN"
-  project_fm="$(git_repo show "$PIN:PROJECT.md" | frontmatter_json)" || refuse "PROJECT.md frontmatter could not be read at $PIN"
+  plan_fm="$(plan_git show "$PLAN_PIN:docs/plans/$PLAN.md" | frontmatter_json)" || refuse "the Plan frontmatter could not be read at $PLAN_PIN"
+  project_fm="$(plan_git show "$PLAN_PIN:PROJECT.md" | frontmatter_json)" || refuse "PROJECT.md frontmatter could not be read at $PLAN_PIN"
   # REF:L165-L178: every pinned Action must still be open; none narrowed, none outside the pin.
   jq -e --argjson pinned "$ACTION_IDS_JSON" '[.actions[]? | select(.id as $i | $pinned | index($i) != null) | .status] as $s | ($s | length) == ($pinned | length) and all($s[]; . != "done")' <<<"$plan_fm" >/dev/null \
     || refuse "all exact pinned Actions must be in the Plan and still open; no narrowed or repeated START"
@@ -882,7 +922,7 @@ phase_p1() {
       # PR #2455: a previous Plan that was already finished stays `complete`; the card's before-image names which case this is.
       expected_prev="$(jq -r '.planActivation.envelope.previousPlanBefore.status // ""' "$DESCRIPTOR")"
       [[ "$expected_prev" == active || "$expected_prev" == complete ]] || refuse "the card's previousPlanBefore status is '$expected_prev', expected 'active' or 'complete'"
-      actual_prev="$(git_repo show "$PIN:docs/plans/$previous.md" | frontmatter_json | jq -r '.status // ""')"
+      actual_prev="$(plan_git show "$PLAN_PIN:docs/plans/$previous.md" | frontmatter_json | jq -r '.status // ""')"
       [[ "$actual_prev" == "$expected_prev" ]] || refuse "the pinned previous Plan $previous is '$actual_prev' at the reviewed revision, but the card's previousPlanBefore expects '$expected_prev'"
       NEEDS_ACTIVATION=true
       ;;
@@ -994,7 +1034,7 @@ phase_p2() {
   rec preRestartWorkerPid "$PRE_WORKER_PID"
   rec preRestartBinding "$(jq -c '.binding' <<<"$PRE_BINDING")"
   # The read-only checks that must hold before the sign-in sequence may claim the day (grant and request slots, request ignored by Git).
-  SIGN_IN_ARGS=(start-run sign-in --repository "$ARCADIA_REPO" --workspace "$WORKSPACE" --project "$PROJECT" --card "$ID" --run-id "$RUN_ID"
+  SIGN_IN_ARGS=(start-run sign-in --repository "$ARCADIA_REPO" --workspace "$WORKSPACE" --project "$SIGN_IN_PROJECT" --card "$ID" --run-id "$RUN_ID"
     --run-directory "$RUN_DIR" --release "$PIN" --policy-revision "$PROD_REVISION" --policy-epoch "$PROD_EPOCH")
   arcadia "${SIGN_IN_ARGS[@]}" --check-only --json > "$RUN_DIR/sign-in-check.json" 2> "$RUN_DIR/sign-in-check.stderr" \
     && jq -e '.ok == true and .data.mode == "check-only"' "$RUN_DIR/sign-in-check.json" >/dev/null \
@@ -1206,6 +1246,7 @@ phase_p5() {
     return 0
   fi
   [[ "$(git_repo rev-parse HEAD)" == "$EXPECTED_HEAD" && -z "$(git_repo status --porcelain=v1 --untracked-files=all)" ]] || refuse "main moved or became dirty before the Plan activation"
+  check_project_checkout " before the Plan activation"  # a second Project's activation settles and publishes in its own checkout
   check_reviewed_hashes  # the descriptor the runner will read is still the reviewed one
   PLAN_ACTIVATION_ATTEMPTED=true
   mutated "Plan activation runner invoked for $PROJECT/$PLAN (replay-safe; this card's START marker is the only allowance; the Plan stays active if it succeeds; no automatic deactivation)"
@@ -1218,7 +1259,11 @@ phase_p5() {
   # Afterwards: the Plan is active, production is still Off, and the runtime is still current (a docs-only commit).
   git_repo merge-base --is-ancestor "$PIN" HEAD || refuse "main no longer descends from the reviewed revision after the Plan activation"
   [[ -z "$(git_repo status --porcelain=v1 --untracked-files=all)" ]] || refuse "main checkout has changes after the Plan activation"
-  plan_after="$(frontmatter_json < "$ARCADIA_REPO/docs/plans/$PLAN.md")" || refuse "the Plan frontmatter could not be read after the activation"
+  if [[ "$PROJECT_REPOSITORY" != null ]]; then
+    plan_git merge-base --is-ancestor "$PLAN_PIN" HEAD || refuse "the Project checkout no longer descends from its pinned revision $PLAN_PIN after the Plan activation"
+    [[ -z "$(plan_git status --porcelain=v1 --untracked-files=all)" ]] || refuse "the Project checkout has changes after the Plan activation"
+  fi
+  plan_after="$(frontmatter_json < "$PLAN_REPO/docs/plans/$PLAN.md")" || refuse "the Plan frontmatter could not be read after the activation"
   jq -e '.status == "active"' <<<"$plan_after" >/dev/null || refuse "the Plan $PLAN is not active after the activation"
   check_production_off
   check_runtime_current
@@ -1255,6 +1300,10 @@ phase_p6() {
   head_now="$(git_repo rev-parse HEAD)"
   git_repo merge-base --is-ancestor "$PIN" "$head_now" || refuse "main does not descend from the reviewed revision"
   [[ -z "$(git_repo status --porcelain=v1 --untracked-files=all)" ]] || refuse "main checkout is dirty before the START"
+  if [[ "$PROJECT_REPOSITORY" != null ]]; then
+    plan_git merge-base --is-ancestor "$PLAN_PIN" HEAD || refuse "the Project checkout does not descend from its pinned revision $PLAN_PIN"
+    [[ -z "$(plan_git status --porcelain=v1 --untracked-files=all)" ]] || refuse "the Project checkout is dirty before the START"
+  fi
   check_runtime_current
   check_signin_receipt  # REF:L245-L248, L364 as replaced by Decision 0161, again at the START: receipt bytes, bound worker, expiry and windows
   check_production_off  # REF:L274-L284 (fresh)
@@ -1447,6 +1496,10 @@ run_phases() {
   CARD_EXPIRES_AT="$(jq -er '.expires_at' "$DESCRIPTOR")"
   DELEGATION="$(jq -c '.startRun.delegation // null' "$DESCRIPTOR")"
   DELEGATION_DECISION="$(jq -r '.decision // ""' <<<"$DELEGATION")"
+  PROJECT_REPOSITORY="$(jq -c '.startRun.projectRepository // null' "$DESCRIPTOR")"
+  SIGN_IN_PROJECT="$PROJECT"  # a second Project's card replaces it in P1 with the Project of this checkout
+  if [[ "$PROJECT_REPOSITORY" == null ]]; then PLAN_REPO="$ARCADIA_REPO"; PLAN_PIN="$PIN"
+  else PLAN_REPO="$(jq -r '.path // ""' <<<"$PROJECT_REPOSITORY")"; PLAN_PIN="$(jq -r '.reviewedRevision // ""' <<<"$PROJECT_REPOSITORY")"; fi
   export START_RUN_POLICY_REVISION="$PROD_REVISION"
   rec_str id "$ID"; rec_str project "$PROJECT"; rec_str plan "$PLAN"; rec_str provider "$PROVIDER"
   rec actionIds "$ACTION_IDS_JSON"; rec_str transitions "$TRANSITIONS"

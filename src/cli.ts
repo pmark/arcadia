@@ -1249,6 +1249,7 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .requiredOption("--expires-hours <n>", "Hours until the card expires (at most 24)")
     .option("--repository <path>", "Arcadia repository (default: git toplevel of the current directory)")
     .option("--workspace <path>", "Workspace path", defaultWorkspace())
+    .option("--project <slug>", "The Plan's Project; when its registered repository is not this one, read the Plan there and pin that repository's origin main too (operator-pressed cards only)")
     .option("--delegated-from <card/run>", "Decision 0163: pin Rowan's successor card, delegated from the operator's originating press (card id / executor run id)")
     .option("--day-grant-from <card/run>", "Decision 0173: pin Rowan's START card within the operator's day approval (day-grant card id / executor run id)")
     .option("--previous-cause <slug>", "Decision 0173: the stable name of the latest START press's cause; recorded, not machine-proved")
@@ -1258,7 +1259,7 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .option("--reproduction <path>", "Decision 0173: the repository fixture or replay that reproduces the cause")
     .option("--fix-cause <slug>", "Decision 0187: the cause that fix addresses; after a failed batch it must equal --previous-cause")
     .option("--observed-cleared <pointer>", "Decision 0173: for an outside cause with no code fix, where it was observed cleared")
-  ).action((options: { plan: string; actions: string; provider: string; expiresHours: string; repository?: string; workspace?: string; delegatedFrom?: string; dayGrantFrom?: string; previousCause?: string; previousEvidence?: string; fixPullRequest?: string; fixCommit?: string; reproduction?: string; fixCause?: string; observedCleared?: string; json?: boolean }) =>
+  ).action((options: { plan: string; actions: string; provider: string; expiresHours: string; repository?: string; workspace?: string; project?: string; delegatedFrom?: string; dayGrantFrom?: string; previousCause?: string; previousEvidence?: string; fixPullRequest?: string; fixCommit?: string; reproduction?: string; fixCause?: string; observedCleared?: string; json?: boolean }) =>
     runCliAction("start-run.pins", options, () => {
       const response = runStartRunPinsCommand(options);
       if (!options.json) for (const warning of response.warnings) process.stderr.write(`Warning: ${warning}\n`);
@@ -1326,7 +1327,8 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .requiredOption("--action <id...>", "A pinned Action id (repeatable)")
     .option("--repository <path>", "Repository holding the Project's Decisions (default: the current directory)")
     .option("--workspace <path>", "Workspace path", defaultWorkspace())
-  ).action((options: { project: string; action: string[]; repository?: string; workspace?: string; json?: boolean }) =>
+    .option("--require-registered-repository", "Refuse unless --repository is the Project's registered repository in the workspace (a second Project's START card)")
+  ).action((options: { project: string; action: string[]; repository?: string; workspace?: string; requireRegisteredRepository?: boolean; json?: boolean }) =>
     runCliAction("start-run.gate-check", options, () => runStartRunGateCheckCommand({ ...options, actions: options.action }), (response) => JSON.stringify(response.data, null, 2).split("\n")));
   addJsonOption(startRun.command("readiness")
     .description("Read-only: every ready Action across the Project's accepted (active) Plans, a reason for each other Action, and the shortfall against a batch of two; with --plan and --action, whether that scope would be admitted now. Proposes and grants nothing")

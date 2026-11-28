@@ -55,6 +55,22 @@ export interface StartRunPins {
   // the sign-in once and has the bound worker check usage after its protected install (scripts/start-run.sh, P4).
   /** Present only on a card Rowan presses: Decision 0163's successor block, or Decision 0173's press within the operator's day approval. */
   delegation?: StartRunDelegation | DayGrantDelegation;
+  /**
+   * Present only when the Plan belongs to another Project than the repository that holds the executor: that Project's
+   * registered primary checkout, its origin and its origin main at preparation. The Plan, PROJECT.md and the Project's
+   * own Decisions are read there at `reviewedRevision`; the executor, the required Decisions and the runtime stay at the
+   * card's own `reviewedRevision`. Only on an operator-pressed card (no delegation).
+   */
+  projectRepository?: StartRunProjectRepository;
+}
+
+export interface StartRunProjectRepository {
+  /** Absolute real path of the Project's registered primary checkout (workspace project metadata repo_path). */
+  path: string;
+  /** `git remote get-url origin` of that checkout. */
+  origin: string;
+  /** That repository's origin main when the card was prepared; its checkout must be clean on main at exactly this commit. */
+  reviewedRevision: string;
 }
 
 export class StartRunPinsError extends Error {
@@ -89,8 +105,18 @@ const repoRelative = (v: unknown): v is string =>
 /** Strict validation: the exact field set, no defaults, no extras. Returns the same object when valid. */
 export function validateStartRunPins(value: unknown): StartRunPins {
   const hasDelegation = !!value && typeof value === "object" && "delegation" in value;
-  exactKeys(value, hasDelegation ? [...START_RUN_KEYS, "delegation"] : START_RUN_KEYS, "startRun");
+  const hasProjectRepository = !!value && typeof value === "object" && "projectRepository" in value;
+  exactKeys(value, [...START_RUN_KEYS, ...(hasDelegation ? ["delegation"] : []), ...(hasProjectRepository ? ["projectRepository"] : [])], "startRun");
   const p = value as StartRunPins;
+  if (hasProjectRepository) {
+    // A second Project's card is the operator's own press (Decisions 0156/0157): no delegated or day-grant chain covers it.
+    if (hasDelegation) fail("startRun.projectRepository is only on an operator-pressed card; a delegated card runs Arcadia's own Plans.");
+    exactKeys(p.projectRepository, ["origin", "path", "reviewedRevision"], "startRun.projectRepository");
+    const r = p.projectRepository!;
+    if (!text(r.path, 1000) || !path.isAbsolute(r.path) || path.normalize(r.path) !== r.path || r.path.length > 1 && r.path.endsWith(path.sep)) fail("startRun.projectRepository.path must be a normalized absolute path.");
+    if (!text(r.origin, 1000)) fail("startRun.projectRepository.origin needs the checkout's origin URL.");
+    if (typeof r.reviewedRevision !== "string" || !sha1.test(r.reviewedRevision)) fail("startRun.projectRepository.reviewedRevision must be a full 40-hex commit id.");
+  }
   if (hasDelegation && (p.delegation as { decision?: unknown } | undefined)?.decision === DAY_GRANT_DECISION) {
     try { validateDayGrantDelegation(p.delegation); } catch (error) { fail(error instanceof Error ? error.message : String(error)); }
     for (const needed of [DAY_GRANT_DECISION, "0170", DELEGATION_DECISION]) {

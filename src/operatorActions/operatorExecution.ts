@@ -34,6 +34,15 @@ export function withinPinnedAskSettlementRunner<T>(descriptorPath: string, run: 
 /** The Decision 0161 diagnostic Agent Ask of a START card's sign-in sequence (src/production/startRunSignIn.ts buildDiagnosticAsk). */
 export const START_RUN_DIAGNOSTIC_ASK = /^start-run-signin-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9a-f]{8}$/;
 
+/** The Project slug of the checkout whose library holds a card (`<checkout>/artifacts/generated/operator-scripts`), or null. */
+function libraryCheckoutProject(library: string): string | null {
+  try {
+    const match = /^---\r?\n([\s\S]*?)\r?\n---/.exec(readFileSync(path.resolve(library, "../../..", "PROJECT.md"), "utf8"));
+    const slug = match ? /^slug:\s*["']?([a-z0-9]+(?:-[a-z0-9]+)*)["']?\s*$/m.exec(match[1])?.[1] : undefined;
+    return slug ?? null;
+  } catch { return null; }
+}
+
 /** Called before previews, applies and replay returns in the canonical settlement path. */
 export function assertOperatorSettlementContract(
   ask: NormalizedAgentAsk,
@@ -57,7 +66,9 @@ export function assertOperatorSettlementContract(
   }
   // An entry that names its Project settles only that Project's Asks, whatever scope it declares;
   // request ids alone are not Project-bound, and the card shows this Project's badge.
-  if (descriptor.project !== undefined && ask.project !== descriptor.project) {
+  // The one exception: a second Project's START card records its own sign-in diagnostic in its library's Project (checked below).
+  const crossProjectDiagnostic = descriptor.startRun?.projectRepository !== undefined && descriptor.agentAsk === undefined && START_RUN_DIAGNOSTIC_ASK.test(ask.requestId) && ask.intent === "decision";
+  if (descriptor.project !== undefined && ask.project !== descriptor.project && !crossProjectDiagnostic) {
     refuse("OPERATOR_SETTLEMENT_SCOPE_MISMATCH", `This operator action belongs to Project ${descriptor.project}; it cannot settle a ${ask.project} Agent Ask.`);
   }
   if (descriptor.agentAskRejections) {
@@ -80,7 +91,10 @@ export function assertOperatorSettlementContract(
     // Decision 0161: a START card's own sign-in sequence records exactly one diagnostic Decision through the Agent Ask
     // route, accepted, in the card's Project. Its request id carries the run's nonce, so no descriptor can pin it ahead.
     // `settlement.proposalId` is the stored proposal id (agentask_…), never the request id; `ask` is that same proposal.
-    if (!START_RUN_DIAGNOSTIC_ASK.test(ask.requestId) || ask.intent !== "decision" || ask.targetRef !== null || ask.project !== descriptor.startRun.project
+    // A second Project's card (startRun.projectRepository) records it in the Project of the checkout that holds its library,
+    // where the executor and its sign-in run, never in the second Project: settlement would route the Ask into that repository.
+    const diagnosticProject = descriptor.startRun.projectRepository ? libraryCheckoutProject(path.dirname(file)) : descriptor.startRun.project;
+    if (!START_RUN_DIAGNOSTIC_ASK.test(ask.requestId) || ask.intent !== "decision" || ask.targetRef !== null || !diagnosticProject || ask.project !== diagnosticProject
       || !String(ask.rationale ?? "").includes(`for START card ${id} run `) || (settlement !== null && settlement.disposition !== "accepted")) {
       refuse("OPERATOR_SETTLEMENT_SCOPE_MISMATCH", "A START card settles only its own Decision 0161 sign-in diagnostic Agent Ask, accepted, in its Project.");
     }
