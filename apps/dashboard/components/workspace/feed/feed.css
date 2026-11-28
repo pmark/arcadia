@@ -79,3 +79,6 @@
 .feed-fab.alert .feed-fab-ring::after { content: ""; position: absolute; inset: -3px; border-radius: 50%; box-shadow: 0 0 0 2px var(--ember); animation: feed-halo 2.4s ease-in-out infinite; }
 @keyframes feed-halo { 50% { box-shadow: 0 0 0 2px var(--ember), 0 0 14px 2px rgb(229 143 111 / .55); } }
 @media (prefers-reduced-motion: reduce) { .feed-fab.alert .feed-fab-ring::after { animation: none; } }
+
+.feed-history-toggle { align-self: flex-start; margin: 0 0 8px; padding: 4px 12px; border: 1px solid currentColor; border-radius: 999px; background: transparent; color: inherit; font: inherit; font-size: 0.8rem; cursor: pointer; opacity: 0.8; }
+.feed-history-toggle[aria-expanded="true"] { opacity: 1; font-weight: 600; }
