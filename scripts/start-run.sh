@@ -1016,8 +1016,8 @@ phase_p2_quiet_host() {
   done
   verdict="$(jq -c --argjson gapBound "$QUIET_HOST_MAX_GAP_MS" --argjson pairBound "$QUIET_HOST_PAIR_GAP_MS" --argjson loadBound "$QUIET_HOST_MAX_LOAD1" \
     --argjson window "$QUIET_HOST_SAMPLE_SECONDS" --argjson waited "$(( $(date +%s) - started ))" '
-    def s: (. / 100 | floor) / 10;
-    . as $samples | [.[] | select(.at != null)] as $read
+    def s: (. / 100 | floor) / 10; . as $samples
+    | [.[] | select(.at != null)] as $read
     | (($samples | length) - ($read | length)) as $unreadBeats | ([$samples[] | select(.load1 == null)] | length) as $unreadLoads
     | ([$read[].at] | unique) as $beats
     | ([range(1; $beats | length) as $i | $beats[$i] - $beats[$i - 1]] + (if ($read | length) > 0 then [$read[-1].ageMs] else [] end)) as $gaps
