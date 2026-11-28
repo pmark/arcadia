@@ -6,9 +6,10 @@ name: Arcadia
 status: active
 goal: Turn stated outcomes into clarified, routed, executable work without the operator holding the whole portfolio in their head.
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
-milestone: Track 6 standby test pins 20261127
-active_plan: track-6-standby-test-pins-20261127
+milestone: Track 7 standby test pins 20261127
+active_plan: track-7-standby-test-pins-20261127
 updated: 2026-11-28
+current_action: pin-mission-log-markdown
 ---
 
 # Arcadia
