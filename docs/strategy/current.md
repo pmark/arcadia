@@ -105,6 +105,35 @@ Before that he had seen A's full text: "A (recommended): admit the 30-second fix
 - **When the admission closes:** the PR has merged or been dropped, and Rowan or Signal notes that on #3158 and here.
 - **It still lands like every admitted PR:** on its own exact-head independent review and green checks, in an Off window. It changes the executor (`scripts/start-run.sh`), so every START card after it needs a fresh mint, review and rule-1 rehearsal.
 
+## Admission (Fri 2026-11-27, afternoon): "Pressed, A" on the in-card quiet check
+
+The operator answered "Pressed, A" (verbatim, a human-origin turn at 2026-11-27T23:59:08Z, 3:59 PM Pacific, in Signal 20's session `e1a83b65-af47-4256-b2f1-b001ded2f2a7`, line 7810, uuid `b2fe91e3-c481-40b1-a8db-2e523e124aae`). "Pressed" reports his press of Track 6 card B. "A" answers Signal's menu at line 7798 (uuid `5d4588da-f6da-49db-bf08-c8a2fdfcb54b`), whose item reads, verbatim:
+
+> 🗳️ **Ending these time windows: move the quiet check inside the card.**
+> - **How it works:** when you press, the card itself spends about 90 seconds checking the host is quiet, before using anything up. If it isn't quiet, the card says "host not quiet" and nothing is lost, so you can just press again later. You press whenever suits you, with no pings or 10-minute windows.
+> - **Size:** about 30 to 50 lines in the START script, plus tests. It gets built together with a fix for the gap limit found today (#3184), as one held PR with an independent review, after card B's run.
+> - **Costs:**
+>   - Each press takes about 90 seconds before anything happens. The dashboard should say "checking host".
+>   - It lowers, but doesn't remove, the risk right after the worker restarts. The worker-thread fix does that later.
+>   - While PPN is busy, it will often say "not now".
+> - It's engine code, so it needs your freeze admission. Afterwards every card gets built and rehearsed fresh.
+>
+> **A (recommended): admit it.** **B: wait for the next checkpoint.**
+
+- **Timing, from the menu:** built after Track 6 card B's run. It lands in an Off window.
+
+- **The phase stays `freeze-and-prove`** and the engine stays frozen at `a5f041066`. `current.json` does not change.
+- **Admitted through the freeze,** as one PR citing `Phase-cause: #3189`, the admission Issue. Rowan or Signal labels #3189 `phase-cause` only after this section merges:
+
+  | PR | Admitted change |
+  |---|---|
+  | The in-card quiet check plus the #3184 fix | `scripts/start-run.sh`: before P3 consumes the card, sample the bound worker's usage beat and load1 for about 90 s and refuse "host not quiet" without consuming anything. Fix #3184's re-check budget so steady beat gaps up to the intended bound pass. The dashboard (`apps/dashboard/`, per the menu's "The dashboard should say 'checking host'"): show that status line while the check runs, and the "host not quiet" refusal. Include the fixtures and tests for both |
+
+- **Only this is admitted.** A PR citing #3189 that changes any engine path other than `scripts/start-run.sh`, the dashboard status display under `apps/dashboard/`, and their tests and fixtures is not admitted.
+- **Not admitted:** #3154 (the worker-thread fix), which still waits for the next checkpoint. Every other held engine PR is also not admitted.
+- **When the admission closes:** the PR has merged or been dropped, and Rowan or Signal notes that on #3189 and here.
+- **It still lands like every admitted PR:** on its own exact-head independent review and green checks, in an Off window, by its stated merge route. It changes the executor, so every START card after it needs a fresh mint, review and rule-1 rehearsal.
+
 ## How it is enforced
 
 | Guard | Where | What it does |
