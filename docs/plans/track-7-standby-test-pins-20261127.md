@@ -51,11 +51,11 @@ actions:
     references: ["src/timeline/render.ts", "tests/pin-timeline-actor-label.test.ts"]
   - id: pin-workspace-relative-path
     title: Pin how an absolute path is made relative to the workspace root for recorded evidence paths, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin how an absolute path is made relative to the workspace root for recorded evidence paths, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-workspace-relative-path-d3333e186c82; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-workspace-relative-path
     clarification: clarified
     confidence: high
@@ -171,7 +171,7 @@ actions:
     references: ["src/markdown/experimentBrief.ts", "tests/pin-experiment-brief-path.test.ts"]
 questions: []
 decisions: []
-current_action: pin-workspace-relative-path
+current_action: pin-sqlite-error-guards
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
